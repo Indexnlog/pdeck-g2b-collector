@@ -1,0 +1,29 @@
+name: Collect API Data
+
+on:
+  schedule:
+    - cron: "0 22 * * *" # 매일 22:00 UTC → 한국시간 07:00
+  workflow_dispatch: # 수동 실행 버튼도 추가
+
+jobs:
+  run-collector:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run collector
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: python collect_all.py
