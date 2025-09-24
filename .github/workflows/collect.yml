@@ -2,7 +2,7 @@ name: Collect API Data
 
 on:
   schedule:
-    - cron: "0 22 * * *" # 매일 07:00 KST 실행
+    - cron: "0 22 * * *" # 매일 07:00 KST 실행 (UTC 22:00)
   workflow_dispatch: # 수동 실행도 가능
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt # ← 요 부분이 requirements.txt 반영 단계야
 
       # 지난 progress.json 불러오기 (없으면 무시)
       - name: Download progress

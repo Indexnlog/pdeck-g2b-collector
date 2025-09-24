@@ -1,7 +1,7 @@
 import requests
 import os
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
 import time
 import json
@@ -16,6 +16,9 @@ BASE_URL = "http://apis.data.go.kr/1230000/ao/CntrctInfoService"
 
 PROGRESS_FILE = 'data/logs/progress.json'
 MAX_DAILY_CALLS = 500
+
+# ✅ 한국 시간대 설정
+KST = timezone(timedelta(hours=9))
 
 
 def send_slack_message(message, is_error=False):
@@ -54,7 +57,7 @@ def send_slack_message(message, is_error=False):
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"🤖 API 데이터 수집 봇 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        "text": f"🤖 API 데이터 수집 봇 | {datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')}"
                     }
                 ]
             }
@@ -76,7 +79,7 @@ def load_progress():
         with open(PROGRESS_FILE, 'r', encoding='utf-8') as f:
             progress = json.load(f)
 
-            today = datetime.now().strftime('%Y-%m-%d')
+            today = datetime.now(KST).strftime('%Y-%m-%d')
             if progress.get('last_run_date') != today:
                 progress['daily_api_calls'] = 0
                 progress['last_run_date'] = today
@@ -88,7 +91,7 @@ def load_progress():
         'current_year': 2005,
         'current_month': 1,
         'daily_api_calls': 0,
-        'last_run_date': datetime.now().strftime('%Y-%m-%d'),
+        'last_run_date': datetime.now(KST).strftime('%Y-%m-%d'),
         'total_collected': 0
     }
 
@@ -167,7 +170,7 @@ def get_month_data(업무코드, year, month, progress, max_retries=3):
 
 def collect_with_resume():
     """중단 지점부터 재개 가능한 수집"""
-    start_time = datetime.now()
+    start_time = datetime.now(KST)
 
     print("="*70)
     print("🚀 계약 데이터 수집 (자동 재개)")
@@ -203,7 +206,7 @@ def collect_with_resume():
     업무_리스트 = list(업무구분.keys())
     start_idx = 업무_리스트.index(progress['current_업무'])
 
-    end_year = datetime.now().year
+    end_year = datetime.now(KST).year
     today_collected = 0
 
     for 이름 in 업무_리스트[start_idx:]:
@@ -236,7 +239,7 @@ def collect_with_resume():
                 year == progress['current_year'] and 이름 == progress['current_업무']) else 1
 
             for month in range(start_month, 13):
-                if year == datetime.now().year and month > datetime.now().month:
+                if year == datetime.now(KST).year and month > datetime.now(KST).month:
                     break
 
                 print(f"   {month:02d}월 수집 중...", end=' ')
@@ -253,7 +256,7 @@ def collect_with_resume():
                     progress['current_month'] = month
                     save_progress(progress)
 
-                    elapsed = (datetime.now() - start_time).seconds
+                    elapsed = (datetime.now(KST) - start_time).seconds
 
                     # Slack 중지 알림
                     send_slack_message(
@@ -302,7 +305,7 @@ def collect_with_resume():
         time.sleep(10)
 
     # 완료 알림
-    elapsed = datetime.now() - start_time
+    elapsed = datetime.now(KST) - start_time
     send_slack_message(
         f"*전체 수집 완료!* 🎉\n\n"
         f"• 오늘 수집: `{today_collected:,}건`\n"
