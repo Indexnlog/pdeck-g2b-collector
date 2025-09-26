@@ -80,7 +80,13 @@ def load_progress():
             progress = json.load(f)
 
             today = datetime.now(KST).strftime('%Y-%m-%d')
+
+            # ✅ 날짜가 바뀌면 API 카운터만 리셋, 진행 위치는 유지
             if progress.get('last_run_date') != today:
+                print(
+                    f"📅 새로운 날짜 감지: {progress.get('last_run_date')} -> {today}")
+                print(
+                    f"🔄 API 카운터 리셋: {progress.get('daily_api_calls', 0)} -> 0")
                 progress['daily_api_calls'] = 0
                 progress['last_run_date'] = today
 
@@ -90,9 +96,11 @@ def load_progress():
         'current_업무': '물품',
         'current_year': 2005,
         'current_month': 1,
+        'current_page': 1,  # ✅ 페이지 추가
         'daily_api_calls': 0,
         'last_run_date': datetime.now(KST).strftime('%Y-%m-%d'),
-        'total_collected': 0
+        'total_collected': 0,
+        'month_completed': False  # ✅ 월 완료 여부 추가
     }
 
 
@@ -104,7 +112,7 @@ def save_progress(progress):
 
 
 def get_month_data(업무코드, year, month, progress, max_retries=3):
-    """특정 월 데이터 수집"""
+    """특정 월 데이터 수집 - 중단 지점부터 재개 가능"""
     endpoint = f"/getCntrctInfoList{업무코드}"
     url = BASE_URL + endpoint
 
@@ -118,13 +126,19 @@ def get_month_data(업무코드, year, month, progress, max_retries=3):
     month_end = f"{year}{month:02d}{last_day}2359"
 
     all_items = []
-    page = 1
+
+    # ✅ 중단된 지점부터 시작
+    page = progress.get('current_page', 1)
+    print(f"      📄 페이지 {page}부터 시작")
 
     while True:
         if progress['daily_api_calls'] >= MAX_DAILY_CALLS:
             print(
                 f"\n⚠️ 일일 API 호출 제한 도달! ({progress['daily_api_calls']}/{MAX_DAILY_CALLS})")
-            return None
+            # ✅ 현재 페이지 저장
+            progress['current_page'] = page
+            progress['month_completed'] = False
+            return all_items
 
         params = {
             'serviceKey': SERVICE_KEY,
@@ -142,10 +156,18 @@ def get_month_data(업무코드, year, month, progress, max_retries=3):
 
                 if '<resultCode>00</resultCode>' in response.text:
                     if '<item>' not in response.text:
+                        # ✅ 월 완료 표시
+                        progress['month_completed'] = True
+                        progress['current_page'] = 1  # 다음 월을 위해 리셋
                         return all_items
 
                     all_items.append(response.text)
                     page += 1
+
+                    # ✅ 페이지마다 진행 상황 저장
+                    progress['current_page'] = page
+                    save_progress(progress)
+
                     time.sleep(0.5)
                     break
                 else:
@@ -155,6 +177,7 @@ def get_month_data(업무코드, year, month, progress, max_retries=3):
                         time.sleep(3)
                     else:
                         print(f"      ⚠️ API 에러 (페이지 {page})")
+                        progress['current_page'] = page
                         return all_items
 
             except Exception as e:
@@ -163,6 +186,7 @@ def get_month_data(업무코드, year, month, progress, max_retries=3):
                     time.sleep(3)
                 else:
                     print(f"      ❌ 오류: {str(e)[:100]}")
+                    progress['current_page'] = page
                     return all_items
 
     return all_items
@@ -186,15 +210,19 @@ def collect_with_resume():
     print(f"   - 현재 업무: {progress['current_업무']}")
     print(
         f"   - 현재 위치: {progress['current_year']}년 {progress['current_month']}월")
+    print(f"   - 현재 페이지: {progress.get('current_page', 1)}")
+    print(
+        f"   - 월 완료 여부: {'✅' if progress.get('month_completed', False) else '⏳'}")
     print(f"   - 오늘 API 호출: {progress['daily_api_calls']}/{MAX_DAILY_CALLS}")
     print(f"   - 누적 수집: {progress.get('total_collected', 0):,}건\n")
 
     # Slack 시작 알림
     send_slack_message(
-        f"*데이터 수집 시작*\n\n"
+        f"*데이터 수집 재개*\n\n"
         f"• 업무: `{progress['current_업무']}`\n"
-        f"• 위치: `{progress['current_year']}년 {progress['current_month']}월`\n"
-        f"• 누적: `{progress.get('total_collected', 0):,}건`"
+        f"• 위치: `{progress['current_year']}년 {progress['current_month']}월 (페이지 {progress.get('current_page', 1)})`\n"
+        f"• 누적: `{progress.get('total_collected', 0):,}건`\n"
+        f"• API 호출: `{progress['daily_api_calls']}/{MAX_DAILY_CALLS}회`"
     )
 
     업무구분 = {
@@ -220,7 +248,9 @@ def collect_with_resume():
         for year in range(start_year, end_year + 1):
             filename = f"data/raw/{이름}_{year}.xml"
 
-            if os.path.exists(filename) and not (year == progress['current_year'] and 이름 == progress['current_업무']):
+            # ✅ 현재 진행 중인 연도가 아니면 완료된 파일 건너뛰기
+            if (os.path.exists(filename) and
+                    not (year == progress['current_year'] and 이름 == progress['current_업무'])):
                 print(f"\n📅 {year}년 - ⏭️  이미 완료")
                 continue
 
@@ -235,22 +265,40 @@ def collect_with_resume():
                     year_data = [
                         f'<item>{item}' for item in items if item.strip()]
 
-            start_month = progress['current_month'] if (
-                year == progress['current_year'] and 이름 == progress['current_업무']) else 1
+            # ✅ 시작 월 결정
+            if year == progress['current_year'] and 이름 == progress['current_업무']:
+                # 현재 월이 완료되었다면 다음 월부터
+                start_month = progress['current_month']
+                if progress.get('month_completed', False):
+                    start_month += 1
+                    progress['current_month'] = start_month
+                    progress['month_completed'] = False
+                    progress['current_page'] = 1
+                    save_progress(progress)
+            else:
+                start_month = 1
 
             for month in range(start_month, 13):
                 if year == datetime.now(KST).year and month > datetime.now(KST).month:
                     break
 
-                print(f"   {month:02d}월 수집 중...", end=' ')
+                print(
+                    f"   {month:02d}월 수집 중... (페이지 {progress.get('current_page', 1)}부터)", end=' ')
+
+                # ✅ 현재 월과 업무가 아니면 페이지를 1로 리셋
+                if not (year == progress['current_year'] and
+                        month == progress['current_month'] and
+                        이름 == progress['current_업무']):
+                    progress['current_page'] = 1
 
                 month_data = get_month_data(코드, year, month, progress)
 
-                if month_data is None:
+                if month_data is None or progress['daily_api_calls'] >= MAX_DAILY_CALLS:
                     if year_data:
                         save_year_file(filename, year_data, 이름)
                         print(f"\n   💾 {filename} 임시 저장 완료!")
 
+                    # ✅ 정확한 진행 상황 저장
                     progress['current_업무'] = 이름
                     progress['current_year'] = year
                     progress['current_month'] = month
@@ -261,7 +309,7 @@ def collect_with_resume():
                     # Slack 중지 알림
                     send_slack_message(
                         f"*일일 API 제한 도달* ⏸️\n\n"
-                        f"• 진행: `{이름} {year}년 {month}월`\n"
+                        f"• 진행: `{이름} {year}년 {month}월 (페이지 {progress.get('current_page', 1)})`\n"
                         f"• 오늘 수집: `{today_collected:,}건`\n"
                         f"• API 호출: `{progress['daily_api_calls']}/{MAX_DAILY_CALLS}회`\n"
                         f"• 소요시간: `{elapsed//60}분`\n"
@@ -270,7 +318,8 @@ def collect_with_resume():
                     )
 
                     print(f"\n⏸️  일일 제한으로 일시 중지")
-                    print(f"💾 진행 상황 저장: {이름} {year}년 {month}월")
+                    print(
+                        f"💾 진행 상황 저장: {이름} {year}년 {month}월 페이지 {progress.get('current_page', 1)}")
                     print(f"✅ 내일 다시 실행하면 여기서부터 이어집니다!")
                     return
 
@@ -284,22 +333,37 @@ def collect_with_resume():
                 else:
                     print(f"⚪ 데이터 없음")
 
-                progress['current_month'] = month + 1
-                save_progress(progress)
+                # ✅ 월 완료 후 다음 월로 이동
+                if progress.get('month_completed', False):
+                    progress['current_month'] = month + 1
+                    progress['current_page'] = 1
+                    progress['month_completed'] = False
+                    save_progress(progress)
+
                 time.sleep(1)
 
             if year_data:
                 save_year_file(filename, year_data, 이름)
                 print(f"   💾 {filename} 저장 완료!")
 
+            # ✅ 연도 완료 후 다음 연도로
             progress['current_year'] = year + 1
             progress['current_month'] = 1
+            progress['current_page'] = 1
+            progress['month_completed'] = False
             save_progress(progress)
 
-        progress['current_업무'] = 업무_리스트[업무_리스트.index(
-            이름) + 1] if 업무_리스트.index(이름) < len(업무_리스트) - 1 else '완료'
+        # ✅ 업무 완료 후 다음 업무로
+        next_idx = 업무_리스트.index(이름) + 1
+        if next_idx < len(업무_리스트):
+            progress['current_업무'] = 업무_리스트[next_idx]
+        else:
+            progress['current_업무'] = '완료'
+
         progress['current_year'] = 2005
         progress['current_month'] = 1
+        progress['current_page'] = 1
+        progress['month_completed'] = False
         save_progress(progress)
 
         time.sleep(10)
