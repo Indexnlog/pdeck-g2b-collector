@@ -1,0 +1,35 @@
+name: G2B Auto Collector & Drive Uploader
+
+on:
+  schedule:
+    - cron: "0 15 * * *" # 한국시간 00:00 자동 실행 (UTC 기준 15:00)
+  workflow_dispatch: # 수동 실행도 가능
+
+jobs:
+  g2b_job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r api-collector/collectors/g2b/requirements.txt
+
+      - name: Create service_account.json
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS }}" > service_account.json
+
+      - name: Run collector
+        run: |
+          python api-collector/collectors/g2b/collect_all.py
+
+      - name: Upload to Google Drive
+        run: |
+          python api-collector/collectors/g2b/upload_to_drive.py
