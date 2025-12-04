@@ -2,15 +2,15 @@ name: G2B Auto Collector & Drive Uploader
 
 on:
   schedule:
-    - cron: "0 15 * * *" # 한국시간 00:00 실행 (UTC 기준 15:00)
-  workflow_dispatch: {} # 수동 실행 가능
+    - cron: "0 15 * * *"
+  workflow_dispatch: {}
 
 jobs:
   g2b_job:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -21,6 +21,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r api-collector/collectors/g2b/requirements.txt
+
+      - name: Set environment variables
+        run: |
+          echo "SLACK_TOKEN=${{ secrets.SLACK_TOKEN }}" >> $GITHUB_ENV
+          echo "SLACK_CHANNEL_ID=${{ secrets.SLACK_CHANNEL_ID }}" >> $GITHUB_ENV
+          echo "API_KEY=${{ secrets.API_KEY }}" >> $GITHUB_ENV
 
       - name: Create service_account.json
         run: |
