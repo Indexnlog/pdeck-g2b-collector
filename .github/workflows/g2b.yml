@@ -29,7 +29,7 @@ jobs:
       # 3) 패키지 설치
       - name: Install dependencies
         run: |
-          pip install -r collectors/g2b/requirements.txt
+          pip install -r api-collector/collectors/g2b/requirements.txt
 
       # 4) Google Credentials 파일 만들기
       - name: Create service_account.json
