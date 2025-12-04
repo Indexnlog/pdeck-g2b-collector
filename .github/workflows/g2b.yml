@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r api-collector/collectors/g2b/requirements.txt
+          pip install -r collectors/g2b/requirements.txt
 
       - name: Create service_account.json
         run: |
