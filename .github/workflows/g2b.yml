@@ -2,7 +2,7 @@ name: G2B Auto Collector & Drive Uploader
 
 on:
   schedule:
-    - cron: "0 15 * * *"
+    - cron: "0 15 * * *" # 매일 00:00 KST
   workflow_dispatch: {}
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -22,7 +22,7 @@ jobs:
         run: |
           pip install -r api-collector/collectors/g2b/requirements.txt
 
-      - name: Set environment variables
+      - name: Export Slack/API keys to env
         run: |
           echo "SLACK_TOKEN=${{ secrets.SLACK_TOKEN }}" >> $GITHUB_ENV
           echo "SLACK_CHANNEL_ID=${{ secrets.SLACK_CHANNEL_ID }}" >> $GITHUB_ENV
@@ -32,10 +32,21 @@ jobs:
         run: |
           echo "${{ secrets.GOOGLE_CREDENTIALS }}" > service_account.json
 
+      - name: Export Google Drive folder ID
+        run: |
+          echo "GDRIVE_FOLDER_ID=${{ secrets.GDRIVE_FOLDER_ID }}" >> $GITHUB_ENV
+
+      # ⭐ 1) Drive에서 progress.json 다운로드
+      - name: Download progress.json
+        run: |
+          python api-collector/collectors/g2b/download_progress.py
+
+      # ⭐ 2) 이어받기 수집 수행
       - name: Run G2B Collector
         run: |
           python api-collector/collectors/g2b/collect_all.py
 
-      - name: Upload to Google Drive
+      # ⭐ 3) 새 progress.json 업로드
+      - name: Upload updated progress.json
         run: |
-          python api-collector/collectors/g2b/upload_to_drive.py
+          python api-collector/collectors/g2b/upload_progress.py
