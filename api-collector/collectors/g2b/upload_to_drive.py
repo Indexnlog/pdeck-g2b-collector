@@ -9,9 +9,9 @@ RAW_DIR = "data/raw"  # YAML 실행 위치 기준 경로
 
 
 def main():
-    # 1. 데이터 폴더가 있는지 먼저 확인 (없으면 조용히 종료)
+    # 1. 데이터 폴더 확인
     if not os.path.exists(RAW_DIR):
-        print(f"📂 '{RAW_DIR}' 폴더가 없습니다. 수집된 데이터가 없어 업로드를 건너뜁니다.")
+        print(f"📂 '{RAW_DIR}' 폴더가 없습니다. 업로드 생략.")
         return
 
     files = [f for f in os.listdir(RAW_DIR) if f.endswith(".xml")]
@@ -20,17 +20,17 @@ def main():
         print("📂 업로드할 XML 파일이 없습니다.")
         return
 
-    print(f"🚀 구글 드라이브 업로드 시작 (대상 폴더 ID: {FOLDER_ID})")
+    print(f"🚀 구글 드라이브 업로드 시작 (Folder ID: {FOLDER_ID})")
 
-    # 2. 인증 정보 로드 (YAML에서 생성된 service_account.json 사용)
+    # 2. 인증
     creds = service_account.Credentials.from_service_account_file(
         "service_account.json",
-        scopes=["https://www.googleapis.com/auth/drive.file"],
+        scopes=["https://www.googleapis.com/auth/drive"],  # ← ★ 중요
     )
 
     service = build("drive", "v3", credentials=creds)
 
-    # 3. 파일 순차 업로드
+    # 3. 파일 업로드
     for filename in files:
         file_path = os.path.join(RAW_DIR, filename)
 

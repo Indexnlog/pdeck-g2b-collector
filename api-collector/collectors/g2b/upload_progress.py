@@ -11,40 +11,70 @@ LOCAL_PATH = "data/logs/progress.json"
 
 def upload_progress():
 
+    # --------------------------
+    # 🔥 환경변수 체크
+    # --------------------------
+    if not FOLDER_ID:
+        print("❌ ERROR: GDRIVE_FOLDER_ID is missing. Check GitHub Secrets.")
+        return
+
+    if not os.path.exists("service_account.json"):
+        print("❌ ERROR: service_account.json missing!")
+        return
+
     if not os.path.exists(LOCAL_PATH):
         print("⚠ No local progress.json to upload.")
         return
 
-    creds = Credentials.from_service_account_file(
-        "service_account.json",
-        scopes=["https://www.googleapis.com/auth/drive"]
-    )
+    # --------------------------
+    # 🔐 인증
+    # --------------------------
+    try:
+        creds = Credentials.from_service_account_file(
+            "service_account.json",
+            scopes=["https://www.googleapis.com/auth/drive"]
+        )
+        service = build('drive', 'v3', credentials=creds)
+    except Exception as e:
+        print(f"❌ Google Drive auth failed: {e}")
+        return
 
-    service = build('drive', 'v3', credentials=creds)
+    # --------------------------
+    # 🔎 기존 progress.json 삭제
+    # --------------------------
+    try:
+        query = f"'{FOLDER_ID}' in parents and name='progress.json'"
+        res = service.files().list(q=query, fields="files(id)").execute()
+        files = res.get("files", [])
 
-    # 기존 progress.json 삭제
-    query = f"'{FOLDER_ID}' in parents and name='progress.json'"
-    res = service.files().list(q=query, fields="files(id)").execute()
-    files = res.get("files", [])
+        for f in files:
+            service.files().delete(fileId=f["id"]).execute()
 
-    for f in files:
-        service.files().delete(fileId=f["id"]).execute()
+    except Exception as e:
+        print(f"❌ Unable to delete old progress.json: {e}")
+        return
 
-    # 새 파일 업로드
-    metadata = {
-        "name": "progress.json",
-        "parents": [FOLDER_ID]
-    }
+    # --------------------------
+    # ⬆ 업로드
+    # --------------------------
+    try:
+        metadata = {
+            "name": "progress.json",
+            "parents": [FOLDER_ID]
+        }
 
-    media = MediaFileUpload(LOCAL_PATH, mimetype="application/json")
+        media = MediaFileUpload(LOCAL_PATH, mimetype="application/json")
 
-    service.files().create(
-        body=metadata,
-        media_body=media,
-        fields="id"
-    ).execute()
+        service.files().create(
+            body=metadata,
+            media_body=media,
+            fields="id"
+        ).execute()
 
-    print("✅ progress.json uploaded to Google Drive")
+        print("✅ progress.json uploaded to Google Drive")
+
+    except Exception as e:
+        print(f"❌ Upload failed: {e}")
 
 
 if __name__ == "__main__":

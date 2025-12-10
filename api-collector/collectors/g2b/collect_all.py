@@ -22,13 +22,10 @@ KST = timezone(timedelta(hours=9))
 
 
 # -------------------------------------------------
-# 🔢 숫자 포맷 통일 함수
+# 🔤 UTF-8 안전 변환 (Windows cp949 깨짐 방지)
 # -------------------------------------------------
-def fmt(n):
-    try:
-        return f"{int(n):,}"
-    except:
-        return n
+def safe_text(text):
+    return text.encode("utf-8", "ignore").decode()
 
 
 # -------------------------------------------------
@@ -49,7 +46,7 @@ def send_slack_message(message, is_error=False, thread_ts=None):
 
     payload = {
         "channel": SLACK_CHANNEL_ID,
-        "text": f"{emoji} {message}",
+        "text": safe_text(f"{emoji} {message}"),
     }
 
     if thread_ts:
@@ -113,13 +110,12 @@ def get_month_data(업무코드, year, month, progress, max_retries=3):
 
     month_start = f"{year}{month:02d}010000"
 
-    # 다음달 1일
     if month == 12:
         next_month = datetime(year + 1, 1, 1)
     else:
         next_month = datetime(year, month + 1, 1)
-    last_day = (next_month - relativedelta(days=1)).day
 
+    last_day = (next_month - relativedelta(days=1)).day
     month_end = f"{year}{month:02d}{last_day}2359"
 
     all_items = []
@@ -197,14 +193,12 @@ def collect_with_resume():
 
     progress = load_progress()
 
-    # -------------------------------------------------
-    # 🔵 Slack 시작 메시지 (thread 시작)
-    # -------------------------------------------------
+    # ---- Slack thread 시작 ----
     thread_ts = send_slack_message(
         f"*데이터 수집 시작*\n\n"
         f"• 업무: `{progress['current_업무']}`\n"
         f"• 위치: `{progress['current_year']}년 {progress['current_month']}월`\n"
-        f"• 누적: `{fmt(progress.get('total_collected', 0))}건`"
+        f"• 누적: `{progress.get('total_collected', 0):,}건`"
     )
 
     업무구분 = {'물품': 'Thng', '용역': 'Servc', '공사': 'Cnstwk'}
@@ -214,80 +208,84 @@ def collect_with_resume():
     end_year = datetime.now(KST).year
     today_collected = 0
 
-    for 이름 in 업무리스트[start_idx:]:
-        코드 = 업무구분[이름]
-        start_year = progress['current_year'] if 이름 == progress['current_업무'] else 2005
+    try:
+        for 이름 in 업무리스트[start_idx:]:
+            코드 = 업무구분[이름]
+            start_year = progress['current_year'] if 이름 == progress['current_업무'] else 2005
 
-        for year in range(start_year, end_year + 1):
-            filename = f"data/raw/{이름}_{year}.xml"
+            for year in range(start_year, end_year + 1):
+                filename = f"data/raw/{이름}_{year}.xml"
 
-            year_data = []
-            start_month = progress['current_month'] if (
-                year == progress['current_year'] and 이름 == progress['current_업무']) else 1
+                year_data = []
+                start_month = progress['current_month'] if (
+                    year == progress['current_year'] and 이름 == progress['current_업무']) else 1
 
-            for month in range(start_month, 13):
+                for month in range(start_month, 13):
 
-                if year == datetime.now(KST).year and month > datetime.now(KST).month:
-                    break
+                    if year == datetime.now(KST).year and month > datetime.now(KST).month:
+                        break
 
-                month_data = get_month_data(코드, year, month, progress)
+                    month_data = get_month_data(코드, year, month, progress)
 
-                # 🔴 API 일일 제한 도달
-                if month_data is None:
-                    save_year_file(filename, year_data, 이름)
+                    # API 일일 제한 도달
+                    if month_data is None:
+                        save_year_file(filename, year_data, 이름)
+                        save_progress(progress)
+
+                        send_slack_message(
+                            f"*일일 API 제한 도달* ⏸️\n\n"
+                            f"• 진행: `{이름} {year}년 {month}월`\n"
+                            f"• 오늘 수집: `{today_collected:,}건`\n"
+                            f"• API 호출: `{progress['daily_api_calls']}/{MAX_DAILY_CALLS}`\n"
+                            f"• 누적: `{progress.get('total_collected', 0):,}건`\n\n"
+                            f"내일 자동으로 이어서 수집합니다!",
+                            thread_ts=thread_ts
+                        )
+                        return
+
+                    if month_data:
+                        year_data.extend(month_data)
+                        count = sum(d.count('<item>') for d in month_data)
+                        today_collected += count
+                        progress['total_collected'] += count
+
+                    progress['current_month'] = month + 1
                     save_progress(progress)
 
-                    send_slack_message(
-                        f"*일일 API 제한 도달* ⏸️\n\n"
-                        f"• 진행: `{이름} {year}년 {month}월`\n"
-                        f"• 오늘 수집: `{fmt(today_collected)}건`\n"
-                        f"• API 호출: `{fmt(progress['daily_api_calls'])}/{MAX_DAILY_CALLS}회`\n"
-                        f"• 누적: `{fmt(progress.get('total_collected', 0))}건`\n\n"
-                        f"내일 자동으로 이어서 수집합니다!",
-                        thread_ts=thread_ts
-                    )
-
-                    return
-
-                if month_data:
-                    year_data.extend(month_data)
-                    count = sum(d.count('<item>') for d in month_data)
-                    today_collected += count
-                    progress['total_collected'] += count
-
-                progress['current_month'] = month + 1
+                save_year_file(filename, year_data, 이름)
+                progress['current_year'] = year + 1
+                progress['current_month'] = 1
                 save_progress(progress)
 
-            save_year_file(filename, year_data, 이름)
-            progress['current_year'] = year + 1
+            progress['current_업무'] = 업무리스트[업무리스트.index(
+                이름) + 1] if 이름 != 업무리스트[-1] else '완료'
+            progress['current_year'] = 2005
             progress['current_month'] = 1
             save_progress(progress)
 
-        progress['current_업무'] = 업무리스트[업무리스트.index(
-            이름) + 1] if 이름 != 업무리스트[-1] else '완료'
-        progress['current_year'] = 2005
-        progress['current_month'] = 1
-        save_progress(progress)
+        # 전체 완료 메시지
+        elapsed = datetime.now(KST) - start_time
+        send_slack_message(
+            f"*전체 수집 완료!* 🎉\n\n"
+            f"• 오늘 수집: `{today_collected:,}건`\n"
+            f"• 총 누적: `{progress.get('total_collected', 0):,}건`\n"
+            f"• 소요시간: `{elapsed.seconds//3600}시간 {(elapsed.seconds//60)%60}분`",
+            thread_ts=thread_ts
+        )
 
-    # -------------------------------------------------
-    # 🎉 전체 수집 완료 slack 메시지
-    # -------------------------------------------------
-    elapsed = datetime.now(KST) - start_time
-    send_slack_message(
-        f"*전체 수집 완료!* 🎉\n\n"
-        f"• 오늘 수집: `{fmt(today_collected)}건`\n"
-        f"• 총 누적: `{fmt(progress.get('total_collected', 0))}건`\n"
-        f"• 소요시간: `{elapsed.seconds//3600}시간 {(elapsed.seconds//60)%60}분`",
-        thread_ts=thread_ts
-    )
-
-
-# -------------------------------------------------
-# 🏁 main
-# -------------------------------------------------
-if __name__ == "__main__":
-    try:
-        collect_with_resume()
     except Exception as e:
+        # ---- 예외 발생 시 진행상황 MUST 저장 ----
+        try:
+            save_progress(progress)
+        except:
+            pass
+
         send_slack_message(f"*오류 발생* 💥\n```{str(e)}```", is_error=True)
         raise
+
+
+# -------------------------------------------------
+# main
+# -------------------------------------------------
+if __name__ == "__main__":
+    collect_with_resume()
