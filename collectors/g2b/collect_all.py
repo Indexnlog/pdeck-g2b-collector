@@ -14,10 +14,22 @@ PROGRESS_PATH = "progress.json"
 def load_progress():
     """progress.json 읽기"""
     if not os.path.exists(PROGRESS_PATH):
-        raise FileNotFoundError("❌ progress.json 파일이 존재하지 않습니다.")
+        log("⚠️ progress.json 파일이 없어 기본 설정을 사용합니다.")
+        return {"last_year": 2024, "last_month": 1}
 
     with open(PROGRESS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        progress = json.load(f)
+
+    # 디버깅: 현재 키 출력
+    log(f"📋 progress.json의 키들: {list(progress.keys())}")
+    log(f"📋 progress.json 내용: {progress}")
+
+    # 구조 호환성 체크
+    if "last_year" not in progress:
+        log("⚠️ last_year 키가 없어서 기본값으로 초기화합니다.")
+        return {"last_year": 2024, "last_month": 1}
+
+    return progress
 
 
 def save_progress(progress):
