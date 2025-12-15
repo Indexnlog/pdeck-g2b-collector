@@ -2,7 +2,7 @@ name: G2B Auto Collector
 
 on:
   schedule:
-    - cron: "0 15 * * *"
+    - cron: "0 15 * * *" # 매일 KST 00:00 실행
   workflow_dispatch:
 
 jobs:
@@ -22,14 +22,19 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Add repository root to PYTHONPATH
-        run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+      - name: Set PYTHONPATH
+        run: |
+          echo "PYTHONPATH=$(pwd)" >> $GITHUB_ENV
 
-      - name: Download progress.json from Google Drive
+      - name: Verify PYTHONPATH
+        run: |
+          python -c "import sys; print('PYTHONPATH:', sys.path)"
+
+      - name: Download progress.json
         run: python collectors/g2b/download_progress.py
 
-      - name: Run G2B Collector
+      - name: Run collector
         run: python collectors/g2b/collect_all.py
 
-      - name: Upload updated progress.json to Google Drive
+      - name: Upload progress.json
         run: python collectors/g2b/upload_progress.py
