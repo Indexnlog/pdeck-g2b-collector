@@ -30,6 +30,11 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Create service_account.json
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS }}" > service_account.json
+          echo "✔ service_account.json created"
+
       - name: Add PYTHONPATH
         run: |
           echo "PYTHONPATH=${{ github.workspace }}" >> $GITHUB_ENV
