@@ -1,6 +1,8 @@
 import os
 from utils.drive import upload_file
 from utils.logger import log
+from utils.slack import send_slack_message
+
 
 # progress.json 로컬 위치
 LOCAL_PATH = "collectors/g2b/progress.json"
