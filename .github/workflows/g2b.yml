@@ -2,7 +2,7 @@ name: G2B Auto Collector
 
 on:
   schedule:
-    - cron: "0 15 * * *" # 매일 KST 00:00 실행
+    - cron: "0 15 * * *"
   workflow_dispatch:
 
 jobs:
@@ -22,19 +22,23 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Set PYTHONPATH
+      - name: Add PYTHONPATH
         run: |
-          echo "PYTHONPATH=$(pwd)" >> $GITHUB_ENV
+          echo "PYTHONPATH=${{ github.workspace }}" >> $GITHUB_ENV
 
       - name: Verify PYTHONPATH
         run: |
-          python -c "import sys; print('PYTHONPATH:', sys.path)"
+          echo "Working directory: $(pwd)"
+          python -c "import sys; [print(f'Python path: {p}') for p in sys.path[:3]]"
 
       - name: Download progress.json
-        run: python collectors/g2b/download_progress.py
+        run: |
+          python collectors/g2b/download_progress.py
 
       - name: Run collector
-        run: python collectors/g2b/collect_all.py
+        run: |
+          python collectors/g2b/collect_all.py
 
-      - name: Upload progress.json
-        run: python collectors/g2b/upload_progress.py
+      - name: Upload updated progress.json
+        run: |
+          python collectors/g2b/upload_progress.py
