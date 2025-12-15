@@ -61,6 +61,13 @@ jobs:
             exit 1
           fi
 
+      - name: Check progress.json structure
+        run: |
+          echo "=== progress.json 내용 확인 ==="
+          cat progress.json
+          echo "=== JSON 구조 분석 ==="
+          python -c "import json; data=json.load(open('progress.json')); print('Keys:', list(data.keys()))"
+
       - name: Run collector
         run: |
           python collectors/g2b/collect_all.py
