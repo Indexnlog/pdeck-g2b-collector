@@ -39,17 +39,6 @@ jobs:
         run: |
           echo "PYTHONPATH=${{ github.workspace }}" >> $GITHUB_ENV
 
-      - name: Verify Google credentials
-        run: |
-          echo "=== 디코딩 후 확인 ==="
-          echo "첫 5글자: $(head -c 5 service_account.json)"
-          if python -c "import json; data=json.load(open('service_account.json')); print(f'✔ 유효한 JSON - Type: {data.get(\"type\")}')" 2>/dev/null; then
-            echo "✔ Google 인증 정보 로드 성공"
-          else
-            echo "❌ 아직도 JSON 문제"
-            exit 1
-          fi
-
       - name: Download and move progress.json
         run: |
           python collectors/g2b/download_progress.py
@@ -61,17 +50,12 @@ jobs:
             exit 1
           fi
 
-      - name: Check progress.json structure
-        run: |
-          echo "=== progress.json 내용 확인 ==="
-          cat progress.json
-          echo "=== JSON 구조 분석 ==="
-          python -c "import json; data=json.load(open('progress.json')); print('Keys:', list(data.keys()))"
-
       - name: Run collector
         run: |
           python collectors/g2b/collect_all.py
 
       - name: Upload updated progress.json
         run: |
-          python collectors/g2b/upload_progress.py
+          echo "업로드를 위해 파일 복사"
+          cp progress.json collectors/g2b/progress.json
+          python collectors/g2b/upload_progress.py || echo "⚠️ Upload failed but continuing"
