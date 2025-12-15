@@ -8,7 +8,7 @@ from utils.logger import log
 
 
 # progress.json 경로 통일
-PROGRESS_PATH = "collectors/g2b/progress.json"
+PROGRESS_PATH = "progress.json"
 
 
 def load_progress():
