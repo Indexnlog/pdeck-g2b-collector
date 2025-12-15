@@ -3,21 +3,20 @@ from utils.drive import download_file
 from utils.logger import log
 from utils.slack import send_slack_message
 
-# progress.json 로컬 저장 위치
-LOCAL_PATH = "collectors/g2b/progress.json"
+# progress.json 로컬 저장 위치 (collect_all.py와 동일하게!)
+LOCAL_PATH = "progress.json"
 
-# Google Drive File ID (GitHub Secrets에서 불러옴)
+# Google Drive File ID
 DRIVE_FILE_ID = os.getenv("GDRIVE_PROGRESS_FILE_ID")
 
 if __name__ == "__main__":
     log("🔽 Downloading progress.json from Google Drive...")
 
-    # Drive 파일 ID 누락 체크
     if not DRIVE_FILE_ID:
         log("❌ ERROR: 환경변수 GDRIVE_PROGRESS_FILE_ID가 설정되지 않았습니다.")
         raise SystemExit(1)
 
-    # 로컬 파일 존재하면 삭제 (Drive 버전을 항상 우선 적용)
+    # 기존 파일 삭제
     if os.path.exists(LOCAL_PATH):
         os.remove(LOCAL_PATH)
         log("🗑 기존 progress.json 삭제 완료")

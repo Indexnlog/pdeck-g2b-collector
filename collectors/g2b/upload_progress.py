@@ -3,22 +3,19 @@ from utils.drive import upload_file
 from utils.logger import log
 from utils.slack import send_slack_message
 
+# collect_all.py와 동일한 경로
+LOCAL_PATH = "progress.json"
 
-# progress.json 로컬 위치
-LOCAL_PATH = "collectors/g2b/progress.json"
-
-# Google Drive File ID (환경변수에서 읽기)
+# Google Drive File ID
 DRIVE_FILE_ID = os.getenv("GDRIVE_PROGRESS_FILE_ID")
 
 if __name__ == "__main__":
     log("🔼 Uploading updated progress.json to Google Drive...")
 
-    # 파일 ID 체크
     if not DRIVE_FILE_ID:
         log("❌ ERROR: 환경변수 GDRIVE_PROGRESS_FILE_ID가 설정되지 않았습니다.")
         raise SystemExit(1)
 
-    # 파일 존재 여부 체크
     if not os.path.exists(LOCAL_PATH):
         log(f"❌ ERROR: {LOCAL_PATH} 파일이 존재하지 않아 업로드할 수 없습니다.")
         raise SystemExit(1)
