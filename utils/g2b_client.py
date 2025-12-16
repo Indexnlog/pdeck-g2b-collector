@@ -4,33 +4,45 @@ from utils.logger import log
 
 API_KEY = os.getenv("API_KEY")
 
+BASE_URL = "https://apis.data.go.kr/1230000/BidPublicInfoService/getBidPblancListInfo"
 
-def get_monthly_data(year: int, month: int):
-    """나라장터 API에서 해당 월 데이터 조회 — 템플릿"""
 
-    if not API_KEY:
-        raise ValueError("❌ API_KEY 환경변수가 설정되지 않았습니다.")
+def fetch_raw_data(업무, year, month):
+    """특정 연/월 데이터를 API로 수집하여 Python 리스트로 반환"""
+    params = {
+        "serviceKey": API_KEY,
+        "numOfRows": 9999,
+        "pageNo": 1,
+        "inqryDiv": "1",
+        "inqryBgnDt": f"{year}{month:02d}01",
+        "inqryEndDt": f"{year}{month:02d}28",
+    }
 
-    # 월 01, 02 같은 형태로 맞춤
-    month_str = f"{month:02d}"
+    response = requests.get(BASE_URL, params=params)
 
-    url = f"https://apis.data.go.kr/1230000/SomeEndpoint?" \
-          f"serviceKey={API_KEY}&pblntfNo={year}{month_str}"
+    if response.status_code != 200:
+        raise Exception(f"API 오류: {response.status_code}")
 
-    log(f"🌐 API 요청: {url}")
+    return response.text  # XML 문자열 반환
 
-    try:
-        res = requests.get(url, timeout=20)
-        res.raise_for_status()
-    except Exception as e:
-        log(f"❌ API 요청 실패: {e}")
-        return []
 
-    # TODO: 실제 XML → dict 파싱 넣기
-    # items = parse_xml(res.text)
+def append_to_year_file(업무, year, xml_text):
+    """연도별 XML 파일로 저장/추가"""
 
-    # 지금은 예시로 빈 리스트 반환
-    items = []
+    folder = "data/raw"
+    os.makedirs(folder, exist_ok=True)
 
-    log(f"📦 API 응답 처리 완료 ({len(items)}건)")
-    return items
+    path = f"{folder}/{업무}_{year}.xml"
+
+    # 새 파일 생성이면 루트 태그부터
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("<items>\n")
+
+    # XML append
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(xml_text)
+        f.write("\n")
+
+    log(f"📁 연도 파일 업데이트 완료 → {path}")
+    return path
