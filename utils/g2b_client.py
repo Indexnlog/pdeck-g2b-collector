@@ -1,48 +1,46 @@
 import os
+import time
 import requests
 from utils.logger import log
 
 API_KEY = os.getenv("API_KEY")
 
-BASE_URL = "https://apis.data.go.kr/1230000/BidPublicInfoService/getBidPblancListInfo"
 
+def fetch_raw_data(job, year, month, retries=5):
+    """나라장터 원본 XML 다운로드 (재시도 포함)"""
 
-def fetch_raw_data(업무, year, month):
-    """특정 연/월 데이터를 API로 수집하여 Python 리스트로 반환"""
+    url = "https://apis.data.go.kr/1230000/ScsbidInfoService/getBidInfoList"
+
     params = {
         "serviceKey": API_KEY,
-        "numOfRows": 9999,
         "pageNo": 1,
-        "inqryDiv": "1",
-        "inqryBgnDt": f"{year}{month:02d}01",
-        "inqryEndDt": f"{year}{month:02d}28",
+        "numOfRows": 9999,
+        "inqryDiv": 1,
+        "inqryBgnDt": f"{year}{month:02}01",
+        "inqryEndDt": f"{year}{month:02}28",
+        "type": "xml",
     }
 
-    response = requests.get(BASE_URL, params=params)
+    for attempt in range(1, retries + 1):
+        resp = requests.get(url, params=params)
 
-    if response.status_code != 200:
-        raise Exception(f"API 오류: {response.status_code}")
+        if resp.status_code == 200:
+            log(f"📄 XML 다운로드 성공: {year}-{month}")
+            return resp.text
 
-    return response.text  # XML 문자열 반환
+        log(f"⚠ API 오류 {resp.status_code} → 재시도 {attempt}/{retries}")
+        time.sleep(2 + attempt)  # 점진적 대기 증가
+
+    raise Exception(f"API 반복 오류 발생: {year}-{month}")
 
 
-def append_to_year_file(업무, year, xml_text):
-    """연도별 XML 파일로 저장/추가"""
+def append_to_year_file(job, year, xml_text):
+    """연단위 파일에 월 데이터를 계속 Append"""
+    filename = f"{job}_{year}.xml"
 
-    folder = "data/raw"
-    os.makedirs(folder, exist_ok=True)
-
-    path = f"{folder}/{업무}_{year}.xml"
-
-    # 새 파일 생성이면 루트 태그부터
-    if not os.path.exists(path):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("<items>\n")
-
-    # XML append
-    with open(path, "a", encoding="utf-8") as f:
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(f"\n<!-- {year}년 데이터 추가 -->\n")
         f.write(xml_text)
-        f.write("\n")
 
-    log(f"📁 연도 파일 업데이트 완료 → {path}")
-    return path
+    log(f"💾 연단위 파일 저장 완료 → {filename}")
+    return filename
