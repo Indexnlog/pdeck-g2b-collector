@@ -116,27 +116,17 @@ jobs:
           echo "✅ 연결 테스트 완료"
 
       - name: Download progress.json
-        id: download_progress
         timeout-minutes: 5
         run: |
           echo "📥 Progress 다운로드 시작..."
           python collectors/g2b/download_progress.py
 
-          # 🔧 추가: 다운로드 결과 확인
           if [ -f "progress.json" ]; then
             echo "✅ progress.json 다운로드 성공"
             echo "📋 파일 크기: $(wc -c < progress.json) bytes"
             
-            # progress 내용 간단히 출력
             echo "📋 현재 진행상황:"
-            python -c "
-            import json                   # ← 맨 앞부터 시작
-            with open('progress.json') as f:
-                p = json.load(f)
-            print(f\"  └─ {p.get('current_job', 'Unknown')} {p.get('current_year', 0)}년 {p.get('current_month', 0)}월\")
-            print(f\"  └─ 누적: {p.get('total_collected', 0):,}건\")
-            print(f\"  └─ API: {p.get('daily_api_calls', 0)}/500\")
-            "
+            python -c "import json; p=json.load(open('progress.json')); print(f\"  └─ {p.get('current_job', 'Unknown')} {p.get('current_year', 0)}년 {p.get('current_month', 0)}월\"); print(f\"  └─ 누적: {p.get('total_collected', 0):,}건\"); print(f\"  └─ API: {p.get('daily_api_calls', 0)}/500\")"
           else
             echo "❌ progress.json 다운로드 실패"
             exit 1
@@ -264,22 +254,10 @@ jobs:
         if: always()
         run: |
           echo "📋 워크플로우 실행 요약" >> $GITHUB_STEP_SUMMARY
-          echo "- 시작 시간: $(date -d '30 minutes ago' '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
-          echo "- 종료 시간: $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
+          echo "- 종료 시간: $(date)" >> $GITHUB_STEP_SUMMARY
           echo "- 실행 ID: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
 
           if [ -f "progress.json" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Progress 상태" >> $GITHUB_STEP_SUMMARY
-            python -c "
-            import json
-            try:
-                with open('progress.json') as f:
-                    p = json.load(f)
-                print(f\"- 진행 위치: {p.get('current_job', 'Unknown')} {p.get('current_year', 0)}년 {p.get('current_month', 0)}월\")
-                print(f\"- 누적 수집: {p.get('total_collected', 0):,}건\")
-                print(f\"- 오늘 API: {p.get('daily_api_calls', 0)}/500\")
-            except:
-                print('- Progress 정보 없음')
-            " >> $GITHUB_STEP_SUMMARY
+            python -c "import json; p=json.load(open('progress.json')); print(f\"- 진행: {p.get('current_job', 'Unknown')} {p.get('current_year', 0)}년 {p.get('current_month', 0)}월\"); print(f\"- 누적: {p.get('total_collected', 0):,}건\"); print(f\"- API: {p.get('daily_api_calls', 0)}/500\")" >> $GITHUB_STEP_SUMMARY
           fi
