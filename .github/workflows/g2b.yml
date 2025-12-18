@@ -2,27 +2,27 @@ name: G2B Auto Collector
 
 on:
   schedule:
-    - cron: "0 23 * * *" # UTC 23:00 = KST 08:00
+    - cron: "0 23 * * *" # UTC 23:00 = KST 08:00 (매일 아침 8시 실행)
   workflow_dispatch:
     inputs:
       skip_connection_test:
         description: "연결 테스트 건너뛰기"
         required: false
-        default: "false"
+        default: false
         type: boolean
       force_api_reset:
-        description: "API 호출 카운트 강제 리셋"
+        description: "API 호출 카운트 강제 리셋 (주의)"
         required: false
-        default: "false"
+        default: false
         type: boolean
+
 jobs:
   g2b-job:
     runs-on: ubuntu-latest
-
-    # 🔧 추가: 타임아웃 설정 (30분)
-    timeout-minutes: 30
+    timeout-minutes: 30 # 무한 루프 방지
 
     env:
+      # GitHub Secrets에서 가져옴
       API_KEY: ${{ secrets.API_KEY }}
       GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
       GDRIVE_PROGRESS_FILE_ID: ${{ secrets.GDRIVE_PROGRESS_FILE_ID }}
@@ -30,7 +30,7 @@ jobs:
       SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 
-      # 🔧 추가: 추가 환경변수
+      # 파이썬 경로 설정 (매우 중요: utils 모듈 인식용)
       PYTHONPATH: ${{ github.workspace }}
       TZ: Asia/Seoul
 
@@ -42,7 +42,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-          # 🔧 추가: pip 캐싱
           cache: "pip"
 
       - name: Install dependencies
@@ -50,214 +49,99 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 🔧 추가: 의존성 확인
-      - name: Verify dependencies
-        run: |
-          echo "🔍 설치된 패키지 확인:"
-          pip list | grep -E "(requests|google|slack)"
-          echo "✅ 의존성 확인 완료"
-
+      # 🔐 보안 키 생성 (Base64 디코딩)
       - name: Create service_account.json
         run: |
-          echo "🔧 Google 서비스 계정 키 생성..."
           echo "${{ secrets.GOOGLE_CREDENTIALS }}" | base64 -d > service_account.json
-
-          # 🔧 추가: 파일 생성 확인
-          if [ -f "service_account.json" ]; then
-            echo "✅ service_account.json 생성 완료 ($(wc -c < service_account.json) bytes)"
+          if [ -s "service_account.json" ]; then
+            echo "✅ service_account.json 생성 완료"
           else
             echo "❌ service_account.json 생성 실패"
             exit 1
           fi
 
-      # 🔧 새로 추가: 환경 확인
-      - name: Environment Check
-        run: |
-          echo "🔍 실행 환경 확인:"
-          echo "- 작업 디렉토리: $(pwd)"
-          echo "- Python 경로: $(which python)"
-          echo "- Python 버전: $(python --version)"
-          echo "- 시간대: $(date)"
-          echo "- PYTHONPATH: $PYTHONPATH"
-
-          echo ""
-          echo "🔍 필수 파일 확인:"
-          ls -la service_account.json 2>/dev/null && echo "✅ service_account.json" || echo "❌ service_account.json"
-          ls -la requirements.txt && echo "✅ requirements.txt" || echo "❌ requirements.txt"
-          ls -la collectors/g2b/ && echo "✅ collectors/g2b/" || echo "❌ collectors/g2b/"
-
-      # 🔧 새로 추가: 연결 테스트
+      # 🧪 연결 테스트 (드라이브 & 슬랙)
       - name: Connection Tests
         if: ${{ !inputs.skip_connection_test }}
         run: |
-          echo "🧪 시스템 연결 테스트 시작"
-
-          # Google Drive 연결 테스트
-          echo "📁 Google Drive 연결 테스트..."
+          echo "🧪 시스템 연결 테스트..."
           python -c "
-          from utils.drive import test_drive_connection
           import sys
+          from utils.drive import test_drive_connection
           if not test_drive_connection():
               print('❌ Google Drive 연결 실패')
               sys.exit(1)
           print('✅ Google Drive 연결 성공')
           "
 
-          # Slack 연결 테스트 (선택사항)
-          echo "💬 Slack 연결 테스트..."
-          python -c "
-          from utils.slack import test_slack_setup
-          if not test_slack_setup():
-              print('⚠ Slack 연결 실패 (계속 진행)')
-          else:
-              print('✅ Slack 연결 성공')
-          " || echo "⚠ Slack 테스트 실패 (계속 진행)"
-
-          echo "✅ 연결 테스트 완료"
-
+      # 📥 Drive에서 상태 파일(progress.json) 다운로드
       - name: Download progress.json
         timeout-minutes: 5
         run: |
-          echo "📥 Progress 다운로드 시작..."
           python collectors/g2b/download_progress.py
-
           if [ -f "progress.json" ]; then
-            echo "✅ progress.json 다운로드 성공"
-            echo "📋 파일 크기: $(wc -c < progress.json) bytes"
-            
-            echo "📋 현재 진행상황:"
-            python -c "import json; p=json.load(open('progress.json')); print(f\"  └─ {p.get('current_job', 'Unknown')} {p.get('current_year', 0)}년 {p.get('current_month', 0)}월\"); print(f\"  └─ 누적: {p.get('total_collected', 0):,}건\"); print(f\"  └─ API: {p.get('daily_api_calls', 0)}/500\")"
+            echo "✅ progress.json 동기화 완료"
           else
-            echo "❌ progress.json 다운로드 실패"
-            exit 1
+            echo "❌ progress.json 다운로드 실패 (초기 실행이면 로컬 파일 사용)"
+            # 실패해도 로컬 파일이 있으면 계속 진행하도록 exit 1 제거 (선택사항)
           fi
 
-      # 🔧 새로 추가: API 리셋 옵션
-      - name: Reset API Count (Optional)
+      # 🔄 (선택) API 카운트 강제 리셋
+      - name: Force Reset API Count
         if: ${{ inputs.force_api_reset }}
         run: |
-          echo "🔄 API 호출 카운트 강제 리셋..."
           python -c "
           import json
-          with open('progress.json', 'r') as f:
-              progress = json.load(f)
-
-          old_count = progress.get('daily_api_calls', 0)
-          progress['daily_api_calls'] = 0
-
-          with open('progress.json', 'w') as f:
-              json.dump(progress, f, ensure_ascii=False, indent=2)
-              
-          print(f'API 호출 카운트 리셋: {old_count} → 0')
+          try:
+              with open('progress.json', 'r') as f:
+                  data = json.load(f)
+              data['daily_api_calls'] = 0
+              with open('progress.json', 'w') as f:
+                  json.dump(data, f)
+              print('🔄 API 카운트 0으로 초기화됨')
+          except Exception as e:
+              print(f'⚠ 리셋 실패: {e}')
           "
 
-      - name: Run collector
+      # 🚀 메인 수집기 실행 (로그 파일에 기록하며 실행)
+      - name: Run G2B Collector
         id: run_collector
-        timeout-minutes: 20
         run: |
-          echo "🚀 G2B 데이터 수집 시작..."
-
-          # 🔧 추가: 상세 로그와 함께 실행
+          # 표준 출력을 화면과 파일(collection.log)에 동시에 기록
           python collectors/g2b/collect_all.py 2>&1 | tee collection.log
 
-          # 실행 결과 저장 (후속 단계에서 사용)
-          echo "COLLECTION_EXIT_CODE=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-
+      # 📤 상태 파일(progress.json) Drive에 업로드 (실패해도 실행)
       - name: Upload progress.json
-        id: upload_progress
-        # 🔧 수정: 수집 실패해도 progress는 업로드 (API 카운트 동기화)
         if: always()
-        timeout-minutes: 5
         run: |
-          echo "📤 Progress 업로드 시작..."
           python collectors/g2b/upload_progress.py
 
-      # 🔧 새로 추가: 로그 분석 및 요약
-      - name: Analyze Results
-        if: always()
-        run: |
-          echo "📊 실행 결과 분석..."
-
-          COLLECTION_EXIT_CODE=${{ steps.run_collector.outputs.COLLECTION_EXIT_CODE }}
-
-          if [ "$COLLECTION_EXIT_CODE" = "0" ]; then
-            echo "✅ 수집 성공"
-          else
-            echo "⚠ 수집 실패 또는 경고 (Exit Code: $COLLECTION_EXIT_CODE)"
-          fi
-
-          # 로그 파일이 있으면 주요 정보 추출
-          if [ -f "collection.log" ]; then
-            echo ""
-            echo "📋 수집 로그 요약:"
-            
-            # 성공 메시지 찾기
-            grep -i "수집.*성공\|collection.*success" collection.log || echo "  └─ 성공 로그 없음"
-            
-            # 에러 메시지 찾기  
-            echo ""
-            echo "❌ 발생한 오류:"
-            grep -i "error\|실패\|fail" collection.log | head -5 || echo "  └─ 오류 없음"
-            
-            # API 호출 정보
-            echo ""
-            echo "📞 API 호출 정보:"
-            grep -i "api.*호출\|api.*call" collection.log | tail -3 || echo "  └─ API 호출 정보 없음"
-          fi
-
-      # 🔧 새로 추가: 실패 시 알림
-      - name: Failure Notification
+      # 🚨 실패 시 Slack 알림 (Python 코드가 실패했을 때 대비용)
+      - name: Notify Failure
         if: failure()
         run: |
-          echo "🚨 워크플로우 실패 알림..."
-
-          # Slack 알림 (가능한 경우)
           python -c "
           from utils.slack import send_slack_message
           import os
+          url = f'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          send_slack_message(f'🚨 **GitHub Actions 워크플로우 실패**\n🔗 로그 확인: {url}')
+          " || echo "Slack 알림 전송 실패"
 
-          workflow_url = f\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-
-          message = '''🚨 **G2B 자동화 실패**
-
-          • 시간: ${{ steps.run_collector.outputs.COLLECTION_EXIT_CODE || '알 수 없음' }}
-          • 브랜치: ${{ github.ref_name }}
-          • 커밋: ${{ github.sha }}
-
-          🔗 워크플로우: ''' + workflow_url
-
-          send_slack_message(message)
-          " || echo "Slack 알림 실패"
-
-      # 🔧 새로 추가: 아티팩트 업로드
-      - name: Upload Artifacts
+      # 📂 로그 아티팩트 저장 (디버깅용)
+      - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g2b-logs-${{ github.run_id }}
+          name: execution-logs
           path: |
             collection.log
             progress.json
-            service_account.json
-          retention-days: 7
+          retention-days: 5
+          # ⚠️ 주의: service_account.json은 절대 올리지 않음!
 
-      # 🔧 새로 추가: 정리
-      - name: Cleanup
+      # 🧹 보안 파일 삭제
+      - name: Cleanup Secrets
         if: always()
         run: |
-          echo "🧹 임시 파일 정리..."
           rm -f service_account.json
-          echo "✅ 정리 완료"
-
-      # 🔧 새로 추가: 워크플로우 요약
-      - name: Workflow Summary
-        if: always()
-        run: |
-          echo "📋 워크플로우 실행 요약" >> $GITHUB_STEP_SUMMARY
-          echo "- 종료 시간: $(date)" >> $GITHUB_STEP_SUMMARY
-          echo "- 실행 ID: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
-
-          if [ -f "progress.json" ]; then
-            echo "### Progress 상태" >> $GITHUB_STEP_SUMMARY
-            python -c "import json; p=json.load(open('progress.json')); print(f\"- 진행: {p.get('current_job', 'Unknown')} {p.get('current_year', 0)}년 {p.get('current_month', 0)}월\"); print(f\"- 누적: {p.get('total_collected', 0):,}건\"); print(f\"- API: {p.get('daily_api_calls', 0)}/500\")" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "🧹 보안 파일 정리 완료"

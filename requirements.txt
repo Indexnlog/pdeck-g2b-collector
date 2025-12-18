@@ -1,9 +1,19 @@
-requests
-python-dotenv
-python-dateutil
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
-google-cloud-storage
-slack-sdk
+# 핵심 통신 모듈
+requests==2.31.0
+
+# 시간 처리 (한국 시간 KST 계산용 - 필수!)
+pytz==2024.1
+
+# 환경 변수 관리
+python-dotenv==1.0.1
+
+# 구글 드라이브 API 연동 (필수)
+google-api-python-client==2.127.0
+google-auth==2.29.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+
+# (선택) Slack 알림
+# 우리가 Webhook(URL) 방식만 쓴다면 requests로 충분하지만, 
+# 나중에 SDK 기능을 쓸 수도 있으니 남겨둡니다.
+slack-sdk==3.27.1
