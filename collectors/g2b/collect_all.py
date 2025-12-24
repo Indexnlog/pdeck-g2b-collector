@@ -1,16 +1,17 @@
-from utils.drive import download_progress_json, upload_progress_json
-from utils.g2b_client import fetch_raw_data, append_to_year_file
-from utils.slack import send_slack_message
-from utils.logger import log
+# prettier-ignore-file
 import os
 import sys
 import datetime
 
-# 프로젝트 루트 경로 추가 (collectors/g2b에서 2단계 상위로)
-project_root = os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))
+# 📍 제일 먼저 경로 설정!
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
+# 📍 그 다음에 utils 임포트
+from utils.drive import download_progress_json, upload_progress_json
+from utils.g2b_client import fetch_raw_data, append_to_year_file
+from utils.slack import send_slack_message
+from utils.logger import log
 
 def get_korea_date():
     """한국 시간 기준 날짜 반환"""

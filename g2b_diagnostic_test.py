@@ -4,6 +4,11 @@ import time
 from datetime import datetime
 
 
+# .env 파일 로드 추가
+from dotenv import load_dotenv
+load_dotenv("collectors/g2b/.env")  # 경로 명시적으로 지정
+
+
 def test_g2b_api():
     """G2B API 기본 연결 테스트"""
 
@@ -21,20 +26,20 @@ def test_g2b_api():
 
     print(f"🌐 테스트 URL: {url}")
 
-    # 2. 최소한의 파라미터로 테스트
+    # 2. API 명세에 맞는 정확한 파라미터
     params = {
-        "serviceKey": api_key,
-        "numOfRows": 10,  # 아주 작은 수
+        "ServiceKey": api_key,  # serviceKey → ServiceKey (대문자 S)
+        "numOfRows": 10,
         "pageNo": 1,
         "inqryDiv": 1,
-        "inqryBgnDate": "20241201",  # 최근 날짜
-        "inqryEndDate": "20241201",  # 하루만
+        "inqryBgnDt": "202412010000",  # 시간 포함 (YYYYMMDDHHMM)
+        "inqryEndDt": "202412012359",  # 시간 포함 (YYYYMMDDHHMM)
         "type": "xml"
     }
 
     print("📋 요청 파라미터:")
     for k, v in params.items():
-        if k == "serviceKey":
+        if k == "ServiceKey":
             print(f"  {k}: {v[:10]}...")
         else:
             print(f"  {k}: {v}")
@@ -74,22 +79,22 @@ def test_g2b_api():
     # 4. 다른 날짜로도 테스트
     print("\n📅 다른 날짜로 테스트...")
     test_dates = [
-        ("20241201", "20241201"),  # 최근
-        ("20240101", "20240101"),  # 2024년 1월
-        ("20140101", "20140101"),  # 2014년 1월 (현재 수집 중)
+        ("202412010000", "202412012359"),  # 최근 (시간 포함)
+        ("202401010000", "202401012359"),  # 2024년 1월
+        ("201401010000", "201401012359"),  # 2014년 1월 (현재 수집 중)
     ]
 
     for start_date, end_date in test_dates:
         print(f"\n📍 날짜 범위: {start_date} ~ {end_date}")
-        params["inqryBgnDate"] = start_date
-        params["inqryEndDate"] = end_date
+        params["inqryBgnDt"] = start_date
+        params["inqryEndDt"] = end_date
 
         try:
             response = requests.get(url, params=params, timeout=30)
             print(
-                f"✅ {start_date}: HTTP {response.status_code}, {len(response.text)} bytes")
+                f"✅ {start_date[:8]}: HTTP {response.status_code}, {len(response.text)} bytes")
         except:
-            print(f"❌ {start_date}: 실패")
+            print(f"❌ {start_date[:8]}: 실패")
 
 
 if __name__ == "__main__":
