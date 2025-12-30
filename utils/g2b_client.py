@@ -92,9 +92,9 @@ class G2BClient:
                 # API 파라미터
                 params = {
                     "serviceKey": self.api_key,
-                    "numOfRows": 1000,  # 최대 페이지 크기
+                    "numOfRows": 999,     # ← 1000 → 999
                     "pageNo": page_no,
-                    "inqryDiv": 1,  # 등록일시 기준
+                    "inqryDiv": "1",      # ← 1 → "1" (문자열)
                     "inqryBgnDt": start_date,
                     "inqryEndDt": end_date
                 }
