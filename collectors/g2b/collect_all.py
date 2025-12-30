@@ -21,7 +21,7 @@ from utils.logger import log
 from utils.slack import send_slack_message
 
 # 설정값
-PROGRESS_FILE_ID = "1ZZSWIlBY9wFEJgGl-5WyJFFKY5FpA-A3"
+PROGRESS_FILE_ID = "1_AKg04eOjQy3KBcjhp2xkkm1jzBcAjn-"
 API_KEY = os.getenv("G2B_API_KEY")
 MAX_API_CALLS = 500
 
@@ -111,7 +111,7 @@ def main():
             
             try:
                 # 데이터 수집
-                xml_content, item_count, api_calls_used = client.fetch_raw_data(job, year, month)
+                xml_content, item_count, api_calls_used = client.fetch_data(job, year, month)
                 
                 # API 사용량 업데이트
                 progress['daily_api_calls'] += api_calls_used
