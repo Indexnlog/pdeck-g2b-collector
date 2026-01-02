@@ -7,19 +7,23 @@ import time
 from datetime import datetime
 import pytz
 
-# 🔧 경로 설정 개선
-# 현재 스크립트가 있는 위치를 시스템 경로에 추가하여 utils 폴더를 확실히 찾도록 함
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.append(current_dir)
+# 🔧 경로 설정 개선 (깊이 보정)
+# 현재 파일(.../collectors/g2b/collect_all.py) 기준 3단계 상위 폴더를 루트로 인식
+current_path = os.path.abspath(__file__)
+g2b_dir = os.path.dirname(current_path)             # .../g2b
+collectors_dir = os.path.dirname(g2b_dir)           # .../collectors
+project_root = os.path.dirname(collectors_dir)      # .../ (루트)
+
+# 시스템 경로에 프로젝트 루트 추가 (utils 폴더를 찾기 위함)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # -----------------------------------------------------------
-# ✅ 핵심 수정: 모든 Import를 최상단으로 이동 (지연 로딩 제거)
+# ✅ 모든 모듈 Import (경로 설정 후 실행)
 # -----------------------------------------------------------
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
-# utils 모듈 로드 (에러가 나면 여기서 바로 나게 됨)
 from utils.drive import (
     download_progress_json, 
     upload_progress_json,
@@ -28,7 +32,7 @@ from utils.drive import (
 from utils.g2b_client import G2BClient
 from utils.logger import log
 from utils.slack import send_slack_message
-from utils.auth import get_drive_service  # 👈 기존 에러 원인 해결 (함수 밖으로 꺼냄)
+from utils.auth import get_drive_service  # 👈 이제 정상 작동함
 
 # 설정값
 PROGRESS_FILE_ID = "1_AKg04eOjQy3KBcjhp2xkkm1jzBcAjn-"
@@ -38,12 +42,10 @@ MAX_API_CALLS = 500
 
 def upload_file_to_shared_drive(local_path, filename):
     """Shared Drive에 파일 업로드"""
-    # (내부 import 제거됨)
-    
     try:
         log(f"📤 Shared Drive 업로드 시작: {filename} ({os.path.getsize(local_path):,} bytes)")
         
-        # Drive 서비스 초기화 (상단에서 import한 함수 사용)
+        # Drive 서비스 초기화
         service = get_drive_service()
         if not service:
             log("❌ Google Drive 서비스 초기화 실패")
@@ -98,7 +100,10 @@ def append_to_year_file(job, year, xml_content):
     filename = f"{job}_{year}.xml"
     
     # 🔧 경로 안전성 확보: 절대 경로 사용
-    base_dir = os.getcwd()
+    base_dir = os.getcwd() # 보통 프로젝트 루트에서 실행되지만 안전장치
+    if base_dir != project_root:
+        base_dir = project_root
+        
     data_dir = os.path.join(base_dir, "data")
     local_path = os.path.join(data_dir, filename)
     
@@ -253,7 +258,6 @@ def main():
         upload_success = upload_progress_json(progress, PROGRESS_FILE_ID)
         
         # 결과 슬랙 전송
-        # (채팅창에서 깨지지 않도록 문자열 연결 방식으로 수정)
         message = (
             f"🎯 **G2B 수집 완료**\n"
             f"```\n"
