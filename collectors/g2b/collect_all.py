@@ -14,7 +14,6 @@ sys.path.insert(0, project_root)
 from utils.drive import (
     download_progress_json, 
     upload_progress_json,
-    upload_file,
     test_drive_connection
 )
 from utils.g2b_client import G2BClient
@@ -23,8 +22,69 @@ from utils.slack import send_slack_message
 
 # 설정값
 PROGRESS_FILE_ID = "1_AKg04eOjQy3KBcjhp2xkkm1jzBcAjn-"
+SHARED_DRIVE_ID = "0AOi7Y50vK8xiUk9PVA"
 API_KEY = os.getenv("API_KEY")
 MAX_API_CALLS = 500
+
+def upload_file_to_shared_drive(local_path, filename):
+    """Shared Drive에 파일 업로드"""
+    from utils.auth import get_drive_service
+    from googleapiclient.http import MediaFileUpload
+    from googleapiclient.errors import HttpError
+    import time
+    
+    try:
+        log(f"📤 Shared Drive 업로드 시작: {filename} ({os.path.getsize(local_path):,} bytes)")
+        
+        # Drive 서비스 초기화
+        service = get_drive_service()
+        if not service:
+            log("❌ Google Drive 서비스 초기화 실패")
+            return False
+        
+        # 파일 메타데이터
+        file_metadata = {
+            'name': filename,
+            'parents': [SHARED_DRIVE_ID]
+        }
+        
+        # 파일 업로드
+        media = MediaFileUpload(local_path, resumable=True, chunksize=1024*1024)
+        
+        # Shared Drive 지원
+        request = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            supportsAllDrives=True,
+            fields='id'
+        )
+        
+        # 업로드 실행
+        response = None
+        while response is None:
+            try:
+                status, response = request.next_chunk()
+                if status:
+                    log(f"📊 업로드 진행률: {int(status.progress() * 100)}%")
+            except HttpError as error:
+                if error.resp.status in [500, 503]:
+                    log(f"⚠️ 서버 오류, 재시도 중...")
+                    time.sleep(5)
+                    continue
+                else:
+                    log(f"❌ HTTP 오류: {error.resp.status} - {error}")
+                    return False
+        
+        if response:
+            file_id = response.get('id')
+            log(f"✅ Shared Drive 업로드 완료: {filename} (ID: {file_id})")
+            return True
+        else:
+            return False
+            
+    except Exception as e:
+        log(f"❌ Shared Drive 업로드 실패: {filename} - {e}")
+        return False
 
 def append_to_year_file(job, year, xml_content):
     """XML 내용을 연도별 파일에 추가"""
@@ -138,11 +198,11 @@ def main():
                     # 연도별 파일에 저장
                     local_path, filename = append_to_year_file(job, year, xml_content)
                     
-                    # Google Drive에 업로드
-                    upload_success = upload_file(local_path, filename)
+                    # ✅ Shared Drive에 업로드
+                    upload_success = upload_file_to_shared_drive(local_path, filename)
                     if upload_success:
                         uploaded_files.append(filename)
-                        log(f"☁️ Google Drive 업로드 완료: {filename}")
+                        log(f"☁️ Shared Drive 업로드 완료: {filename}")
                     
                     total_new_items += item_count
                     progress['total_collected'] += item_count
