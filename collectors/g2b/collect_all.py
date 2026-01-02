@@ -3,14 +3,23 @@ import os
 import sys
 import json
 import traceback
+import time
 from datetime import datetime
 import pytz
 
-# 경로 추가
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
+# 🔧 경로 설정 개선
+# 현재 스크립트가 있는 위치를 시스템 경로에 추가하여 utils 폴더를 확실히 찾도록 함
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
 
-# ✅ 올바른 import (함수 기반)
+# -----------------------------------------------------------
+# ✅ 핵심 수정: 모든 Import를 최상단으로 이동 (지연 로딩 제거)
+# -----------------------------------------------------------
+from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError
+
+# utils 모듈 로드 (에러가 나면 여기서 바로 나게 됨)
 from utils.drive import (
     download_progress_json, 
     upload_progress_json,
@@ -19,6 +28,7 @@ from utils.drive import (
 from utils.g2b_client import G2BClient
 from utils.logger import log
 from utils.slack import send_slack_message
+from utils.auth import get_drive_service  # 👈 기존 에러 원인 해결 (함수 밖으로 꺼냄)
 
 # 설정값
 PROGRESS_FILE_ID = "1_AKg04eOjQy3KBcjhp2xkkm1jzBcAjn-"
@@ -28,15 +38,12 @@ MAX_API_CALLS = 500
 
 def upload_file_to_shared_drive(local_path, filename):
     """Shared Drive에 파일 업로드"""
-    from utils.auth import get_drive_service
-    from googleapiclient.http import MediaFileUpload
-    from googleapiclient.errors import HttpError
-    import time
+    # (내부 import 제거됨)
     
     try:
         log(f"📤 Shared Drive 업로드 시작: {filename} ({os.path.getsize(local_path):,} bytes)")
         
-        # Drive 서비스 초기화
+        # Drive 서비스 초기화 (상단에서 import한 함수 사용)
         service = get_drive_service()
         if not service:
             log("❌ Google Drive 서비스 초기화 실패")
@@ -59,7 +66,7 @@ def upload_file_to_shared_drive(local_path, filename):
             fields='id'
         )
         
-        # 업로드 실행
+        # 업로드 실행 (청크 단위)
         response = None
         while response is None:
             try:
@@ -89,10 +96,14 @@ def upload_file_to_shared_drive(local_path, filename):
 def append_to_year_file(job, year, xml_content):
     """XML 내용을 연도별 파일에 추가"""
     filename = f"{job}_{year}.xml"
-    local_path = f"data/{filename}"
+    
+    # 🔧 경로 안전성 확보: 절대 경로 사용
+    base_dir = os.getcwd()
+    data_dir = os.path.join(base_dir, "data")
+    local_path = os.path.join(data_dir, filename)
     
     # 디렉토리 생성
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(data_dir, exist_ok=True)
     
     # XML 헤더 확인 및 추가
     if not os.path.exists(local_path):
@@ -164,7 +175,7 @@ def main():
         log(f"📋 현재 진행상황: {progress['current_job']} {progress['current_year']}년 {progress['current_month']}월")
         log(f"📊 API 사용량: {progress['daily_api_calls']}/{MAX_API_CALLS}")
         
-        # API 클라이언트 초기화 (디버깅 추가)
+        # API 클라이언트 초기화
         log(f"🔑 API_KEY 상태: {len(API_KEY) if API_KEY else 'None'}글자")
         log(f"🔑 API_KEY 앞자리: {API_KEY[:10] if API_KEY else 'None'}...")
 
@@ -242,14 +253,17 @@ def main():
         upload_success = upload_progress_json(progress, PROGRESS_FILE_ID)
         
         # 결과 슬랙 전송
-        message = f"""🎯 **G2B 수집 완료**
-```
-• 진행: {progress['current_job']} {progress['current_year']}년 {progress['current_month']}월
-• 오늘 수집: {total_new_items:,}건
-• API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS}
-• 누적: {progress['total_collected']:,}건
-• 업로드 파일: {len(uploaded_files)}개
-```"""
+        # (채팅창에서 깨지지 않도록 문자열 연결 방식으로 수정)
+        message = (
+            f"🎯 **G2B 수집 완료**\n"
+            f"```\n"
+            f"• 진행: {progress['current_job']} {progress['current_year']}년 {progress['current_month']}월\n"
+            f"• 오늘 수집: {total_new_items:,}건\n"
+            f"• API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS}\n"
+            f"• 누적: {progress['total_collected']:,}건\n"
+            f"• 업로드 파일: {len(uploaded_files)}개\n"
+            f"```"
+        )
         
         send_slack_message(message)
         log("🎉 수집 작업 완료")
