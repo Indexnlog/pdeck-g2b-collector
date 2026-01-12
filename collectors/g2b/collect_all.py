@@ -41,7 +41,8 @@ try:
     from utils.g2b_client import G2BClient
     from utils.logger import log
     from utils.slack import send_slack_message
-    from utils.auth import get_drive_service
+    from utils.g2b_client import get_drive_service
+
     
 except ImportError as e:
     # 만약 여기서도 에러나면 그건 파일이 없는 거임
