@@ -1,0 +1,63 @@
+name: System Health Check
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # 매일 UTC 00:00 (KST 09:00)
+  workflow_dispatch:
+    inputs:
+      send_slack:
+        description: "Slack 알림 전송"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      API_KEY: ${{ secrets.API_KEY }}
+      GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      SEND_SLACK_NOTIFICATION: ${{ inputs.send_slack || 'true' }}
+      PYTHONPATH: ${{ github.workspace }}
+      TZ: Asia/Seoul
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create service_account.json
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS }}" | base64 -d > service_account.json
+
+      - name: Run Health Check
+        id: health_check
+        run: |
+          echo "🏥 헬스체크 실행..."
+          python monitor_health.py
+        continue-on-error: true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f service_account.json
+
+      - name: Check Results
+        if: steps.health_check.outcome == 'failure'
+        run: |
+          echo "⚠️ 헬스체크에서 문제 발견"
+          exit 1
