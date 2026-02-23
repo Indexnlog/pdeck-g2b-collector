@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import os
 import sys
-import time
 import traceback
+import xml.etree.ElementTree as ET
 from datetime import datetime
 import pytz
 
@@ -22,31 +22,26 @@ print(f"✅ 프로젝트 루트: {project_root}")
 print(f"📂 루트 내용물: {os.listdir(project_root)}")
 
 # -----------------------------------------------------------
-# imports (정리된 최종 형태)
+# imports
 # -----------------------------------------------------------
 try:
-    from googleapiclient.http import MediaFileUpload
-    from googleapiclient.errors import HttpError
-
     from utils.drive import (
         download_progress_json,
         upload_progress_json,
         test_drive_connection,
-        get_drive_service,
     )
+    from utils.db import create_table, insert_contracts
     from utils.g2b_client import G2BClient
     from utils.logger import log
     from utils.slack import send_slack_message
 
-    # 에러 핸들링 추가
     from utils.api_error_handler import (
-        retry_on_error,
         error_context,
         safe_api_call,
         APIException,
         NetworkError,
         RateLimitError,
-        ValidationError
+        ValidationError,
     )
 
 except ImportError as e:
@@ -59,73 +54,65 @@ except ImportError as e:
 # 설정값
 # -----------------------------------------------------------
 PROGRESS_FILE_ID = "1_AKg04eOjQy3KBcjhp2xkkm1jzBcAjn-"
-SHARED_DRIVE_ID = "0AOi7Y50vK8xiUk9PVA"
 API_KEY = os.getenv("API_KEY")
 MAX_API_CALLS = 1000
 
 
 # -----------------------------------------------------------
-# Shared Drive 업로드 (자동 재시도 적용)
+# XML 문자열 → DB row 리스트 변환
 # -----------------------------------------------------------
-@retry_on_error(
-    max_retries=3,
-    base_delay=2.0,
-    on_retry=lambda e, attempt: log(f"⏳ Drive 업로드 재시도 {attempt}/3: {e}")
-)
-def upload_file_to_shared_drive(local_path: str, filename: str) -> bool:
-    """
-    Shared Drive에 파일 업로드 (자동 재시도)
+def parse_items_to_rows(xml_content: str, year: int, month: int) -> list:
+    try:
+        root = ET.fromstring(f"<root>{xml_content}</root>")
+    except ET.ParseError as e:
+        log(f"⚠️ XML 파싱 실패: {e}")
+        return []
 
-    Args:
-        local_path: 로컬 파일 경로
-        filename: 업로드할 파일명
+    rows = []
+    for item in root.findall("item"):
+        def g(tag):
+            el = item.find(tag)
+            return el.text.strip() if el is not None and el.text else None
 
-    Returns:
-        bool: 업로드 성공 여부
-    """
-    with error_context(f"Drive 업로드: {filename}"):
-        service = get_drive_service()
+        def to_int(tag):
+            v = g(tag)
+            try:
+                return int(v) if v else None
+            except (ValueError, TypeError):
+                return None
 
-        file_metadata = {
-            "name": filename,
-            "parents": [SHARED_DRIVE_ID],
+        def to_date(tag):
+            v = g(tag)
+            # YYYY-MM-DD 형식만 허용
+            if v and len(v) == 10 and v[4] == "-":
+                return v
+            return None
+
+        row = {
+            "unty_cntrct_no":               g("untyCntrctNo"),
+            "bsns_div_nm":                  g("bsnsDivNm"),
+            "cntrct_nm":                    g("cntrctNm"),
+            "cntrct_cncls_date":            to_date("cntrctCnclsDate"),
+            "cntrct_prd":                   g("cntrctPrd"),
+            "tot_cntrct_amt":               to_int("totCntrctAmt"),
+            "thtm_cntrct_amt":              to_int("thtmCntrctAmt"),
+            "cntrct_instt_cd":              g("cntrctInsttCd"),
+            "cntrct_instt_nm":              g("cntrctInsttNm"),
+            "cntrct_instt_jrsdctn_div_nm":  g("cntrctInsttJrsdctnDivNm"),
+            "cntrct_cncls_mthd_nm":         g("cntrctCnclsMthdNm"),
+            "pay_div_nm":                   g("payDivNm"),
+            "ntce_no":                      g("ntceNo"),
+            "corp_list":                    g("corpList"),
+            "lngtrm_ctnu_div_nm":           g("lngtrmCtnuDivNm"),
+            "cmmn_cntrct_yn":               g("cmmnCntrctYn"),
+            "rgst_dt":                      g("rgstDt"),
+            "collected_year":               year,
+            "collected_month":              month,
         }
+        if row["unty_cntrct_no"]:  # PK 없는 행 제외
+            rows.append(row)
 
-        media = MediaFileUpload(local_path, resumable=True, chunksize=1024 * 1024)
-
-        request = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            supportsAllDrives=True,
-            fields="id",
-        )
-
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                log(f"📊 업로드 {int(status.progress() * 100)}%")
-
-        log(f"✅ 업로드 완료: {filename} (ID: {response.get('id')})")
-        return True
-
-
-# -----------------------------------------------------------
-# 연월별 XML 파일 저장 (파일 크기 문제로 연도별 → 연월별 분리)
-# -----------------------------------------------------------
-def save_to_yearmonth_file(job, year, month, xml_content):
-    filename = f"{job}_{year}_{month:02d}.xml"
-    data_dir = os.path.join(project_root, "data")
-    os.makedirs(data_dir, exist_ok=True)
-
-    local_path = os.path.join(data_dir, filename)
-
-    with open(local_path, "w", encoding="utf-8") as f:
-        f.write('<?xml version="1.0" encoding="UTF-8"?>\n<root>\n')
-        f.write(xml_content)
-        f.write("\n</root>")
-
-    return local_path, filename
+    return rows
 
 
 # -----------------------------------------------------------
@@ -145,12 +132,12 @@ def get_next_period(job, year, month):
 
 
 # -----------------------------------------------------------
-# 메인 로직 (강화된 에러 핸들링)
+# 메인 로직
 # -----------------------------------------------------------
 def main():
     progress = None
     total_new = 0
-    uploaded = []
+    saved = []
     errors = []
 
     try:
@@ -160,7 +147,11 @@ def main():
         if not API_KEY:
             raise ValidationError("API_KEY 환경변수가 설정되지 않았습니다")
 
-        # 2. Drive 연결 테스트 (재시도 적용)
+        # 2. DB 테이블 준비
+        with error_context("DB 테이블 생성"):
+            create_table()
+
+        # 3. Drive 연결 테스트 (progress.json용)
         with error_context("Google Drive 연결 확인"):
             connection_test = safe_api_call(
                 test_drive_connection,
@@ -170,7 +161,7 @@ def main():
             if not connection_test:
                 raise NetworkError("Google Drive 연결에 실패했습니다")
 
-        # 3. progress.json 다운로드 (재시도 적용)
+        # 4. progress.json 다운로드
         with error_context("progress.json 다운로드"):
             progress = safe_api_call(
                 download_progress_json,
@@ -181,16 +172,16 @@ def main():
             if not progress:
                 raise Exception("progress.json 로드 실패 - Drive에서 파일을 가져올 수 없습니다")
 
-        # 4. 실행마다 API 카운터 리셋 (하루 여러 번 실행 대응)
+        # 5. API 카운터 리셋
         tz = pytz.timezone("Asia/Seoul")
         today = datetime.now(tz).strftime("%Y-%m-%d")
         progress["daily_api_calls"] = 0
         log(f"🔄 API 카운터 리셋 (실행 시각: {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')})")
 
-        # 5. G2B 클라이언트 생성
+        # 6. G2B 클라이언트 생성
         client = G2BClient(API_KEY)
 
-        # 6. 데이터 수집 루프
+        # 7. 데이터 수집 루프
         while progress["daily_api_calls"] < MAX_API_CALLS:
             job = progress["current_job"]
             year = progress["current_year"]
@@ -202,28 +193,17 @@ def main():
             log(f"{'='*60}")
 
             try:
-                # API 호출 (G2BClient 자체에 재시도 로직 있음)
                 xml, count, used = client.fetch_data(job, year, month)
                 progress["daily_api_calls"] += used
 
-                # 데이터가 있으면 저장 및 업로드
                 if count > 0:
-                    local_path, fname = save_to_yearmonth_file(job, year, month, xml)
-
-                    # 업로드 시도 (자동 재시도 적용)
-                    try:
-                        if upload_file_to_shared_drive(local_path, fname):
-                            uploaded.append(fname)
-                            log(f"✅ {fname} 업로드 성공")
-                        else:
-                            log(f"⚠️ {fname} 업로드 실패 (로컬에는 저장됨)")
-                            errors.append(f"업로드 실패: {fname}")
-                    except Exception as upload_err:
-                        log(f"⚠️ {fname} 업로드 에러: {upload_err} (로컬에는 저장됨)")
-                        errors.append(f"업로드 에러: {fname} - {upload_err}")
-
-                    total_new += count
-                    progress["total_collected"] += count
+                    rows = parse_items_to_rows(xml, year, month)
+                    inserted = insert_contracts(rows)
+                    label = f"{job}_{year}_{month:02d} ({inserted:,}건 insert)"
+                    saved.append(label)
+                    total_new += inserted
+                    progress["total_collected"] += inserted
+                    log(f"✅ DB insert 완료: {label}")
                 else:
                     log(f"ℹ️ {job} {year}년 {month}월 - 데이터 없음")
 
@@ -235,12 +215,10 @@ def main():
             except APIException as e:
                 log(f"⚠️ API 에러 ({job} {year}-{month}): {e}")
                 errors.append(f"API 에러: {job} {year}-{month} - {e}")
-                # API 에러는 해당 구간만 건너뛰고 계속 진행
 
             except Exception as e:
                 log(f"❌ 예상치 못한 에러 ({job} {year}-{month}): {e}")
                 errors.append(f"예상치 못한 에러: {job} {year}-{month} - {e}")
-                # 예상치 못한 에러도 일단 계속 시도
 
             # 다음 구간으로 이동
             next_job, next_year, next_month = get_next_period(job, year, month)
@@ -255,7 +233,7 @@ def main():
                 log("📅 2026년 1월까지 모든 데이터 수집 완료")
                 break
 
-        # 7. 진행 상황 저장 (중요: 반드시 저장)
+        # 8. 진행 상황 저장 (Drive)
         progress["last_run_date"] = today
         with error_context("progress.json 업로드"):
             try:
@@ -265,7 +243,7 @@ def main():
                 log(f"⚠️ progress.json 업로드 실패: {e}")
                 errors.append(f"progress.json 업로드 실패: {e}")
 
-        # 8. 결과 알림
+        # 9. 결과 알림
         status_emoji = "🎯" if not errors else "⚠️"
         error_summary = ""
         if errors:
@@ -274,16 +252,13 @@ def main():
                 error_summary += f"\n  • ... 외 {len(errors) - 5}개"
 
         message = f"""{status_emoji} G2B 수집 완료
-오늘 수집: {total_new:,}건
+오늘 수집: {total_new:,}건 → CockroachDB insert
 API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS}
-업로드 파일: {len(uploaded)}개
+처리 구간: {len(saved)}개
 총 누적: {progress.get('total_collected', 0):,}건{error_summary}
 """
-
         send_slack_message(message)
         log("🎉 작업 완료")
-
-        # 에러가 있었어도 일부 성공했으면 성공으로 간주
         return True
 
     except ValidationError as e:
@@ -311,14 +286,13 @@ API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS}
         return False
 
     finally:
-        # 진행 상황이 있으면 최후의 수단으로라도 저장 시도
         if progress:
             try:
                 import json
                 with open("progress_backup.json", "w", encoding="utf-8") as f:
                     json.dump(progress, f, ensure_ascii=False, indent=2)
                 log("📁 로컬 백업 저장 완료: progress_backup.json")
-            except:
+            except Exception:
                 pass
 
 

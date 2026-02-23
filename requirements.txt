@@ -14,6 +14,7 @@ google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.0
 
 # (선택) Slack 알림
-# 우리가 Webhook(URL) 방식만 쓴다면 requests로 충분하지만, 
-# 나중에 SDK 기능을 쓸 수도 있으니 남겨둡니다.
 slack-sdk==3.27.1
+
+# CockroachDB / PostgreSQL 연결
+psycopg2-binary==2.9.9

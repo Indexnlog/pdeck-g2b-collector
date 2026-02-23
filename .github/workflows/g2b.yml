@@ -36,6 +36,7 @@ jobs:
       GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       # 파이썬 경로 설정 (매우 중요: utils 모듈 인식용)
       PYTHONPATH: ${{ github.workspace }}
@@ -55,6 +56,15 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+
+      # 🗄️ DB 테이블 생성 (없으면 생성, 있으면 무시)
+      - name: Create DB Table
+        run: |
+          python -c "
+          from utils.db import create_table
+          create_table()
+          print('✅ contracts 테이블 준비 완료')
+          "
 
       # 🔐 보안 키 생성 (Base64 디코딩)
       - name: Create service_account.json
