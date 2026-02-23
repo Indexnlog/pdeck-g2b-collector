@@ -21,7 +21,7 @@ on:
 jobs:
   g2b-job:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # 무한 루프 방지
+    timeout-minutes: 120 # 무한 루프 방지
 
     env:
       # GitHub Secrets에서 가져옴
@@ -136,7 +136,7 @@ jobs:
       # 🚀 메인 수집기 실행 (로그 파일에 기록하며 실행)
       - name: Run G2B Collector
         id: run_collector
-        timeout-minutes: 25
+        timeout-minutes: 110
         run: |
           echo "🚀 G2B 수집 시작..."
           echo "⏰ 시작 시간: $(date '+%Y-%m-%d %H:%M:%S %Z')"
