@@ -259,9 +259,9 @@ def main():
                 "current_month": next_month,
             })
 
-            # 2025년까지만 수집
-            if next_year > 2025:
-                log("📅 2025년까지 모든 데이터 수집 완료")
+            # 2026년까지만 수집
+            if next_year > 2026:
+                log("📅 2026년까지 모든 데이터 수집 완료")
                 break
 
         # 7. 진행 상황 저장 (중요: 반드시 저장)

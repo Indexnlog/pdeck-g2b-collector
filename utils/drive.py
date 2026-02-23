@@ -298,6 +298,11 @@ def upload_progress_json(progress_data: dict, progress_file_id: str, local_path:
         return False
 
 
+def get_drive_service():
+    """Public wrapper for _get_drive_service()"""
+    return _get_drive_service()
+
+
 def test_drive_connection() -> bool:
     """
     🔧 새로 추가: Google Drive 연결 테스트
