@@ -111,26 +111,19 @@ def upload_file_to_shared_drive(local_path: str, filename: str) -> bool:
 
 
 # -----------------------------------------------------------
-# 연도별 XML 파일 누적
+# 연월별 XML 파일 저장 (파일 크기 문제로 연도별 → 연월별 분리)
 # -----------------------------------------------------------
-def append_to_year_file(job, year, xml_content):
-    filename = f"{job}_{year}.xml"
+def save_to_yearmonth_file(job, year, month, xml_content):
+    filename = f"{job}_{year}_{month:02d}.xml"
     data_dir = os.path.join(project_root, "data")
     os.makedirs(data_dir, exist_ok=True)
 
     local_path = os.path.join(data_dir, filename)
 
-    if not os.path.exists(local_path):
-        with open(local_path, "w", encoding="utf-8") as f:
-            f.write('<?xml version="1.0" encoding="UTF-8"?>\n<root>\n')
-            f.write(xml_content)
-            f.write("\n</root>")
-    else:
-        with open(local_path, "r", encoding="utf-8") as f:
-            content = f.read().replace("</root>", "")
-        content += xml_content + "\n</root>"
-        with open(local_path, "w", encoding="utf-8") as f:
-            f.write(content)
+    with open(local_path, "w", encoding="utf-8") as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n<root>\n')
+        f.write(xml_content)
+        f.write("\n</root>")
 
     return local_path, filename
 
@@ -215,7 +208,7 @@ def main():
 
                 # 데이터가 있으면 저장 및 업로드
                 if count > 0:
-                    local_path, fname = append_to_year_file(job, year, xml)
+                    local_path, fname = save_to_yearmonth_file(job, year, month, xml)
 
                     # 업로드 시도 (자동 재시도 적용)
                     try:
@@ -257,9 +250,9 @@ def main():
                 "current_month": next_month,
             })
 
-            # 2026년까지만 수집
-            if next_year > 2026:
-                log("📅 2026년까지 모든 데이터 수집 완료")
+            # 2026년 1월까지만 수집 (2016-02 ~ 2026-01)
+            if next_year > 2026 or (next_year == 2026 and next_month > 1):
+                log("📅 2026년 1월까지 모든 데이터 수집 완료")
                 break
 
         # 7. 진행 상황 저장 (중요: 반드시 저장)

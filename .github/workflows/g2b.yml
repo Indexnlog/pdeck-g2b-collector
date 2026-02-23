@@ -17,6 +17,11 @@ on:
         required: false
         default: false
         type: boolean
+      reset_progress:
+        description: "진행 위치 리셋 (시작 연도-월 입력, 예: 2016-02 / 비워두면 리셋 안 함)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   g2b-job:
@@ -132,6 +137,40 @@ jobs:
           except Exception as e:
               print(f'⚠ 리셋 실패: {e}')
           "
+
+      # 🔄 (선택) 수집 시작 위치 리셋 (예: "2016-02")
+      - name: Reset Progress Position
+        if: ${{ inputs.reset_progress != '' }}
+        run: |
+          python -c "
+          import json, sys
+
+          raw = '${{ inputs.reset_progress }}'.strip()
+          try:
+              year_str, month_str = raw.split('-')
+              year = int(year_str)
+              month = int(month_str)
+              assert 2000 <= year <= 2030 and 1 <= month <= 12
+          except Exception:
+              print(f'❌ 잘못된 형식: {raw!r}. 예시: 2016-02')
+              sys.exit(1)
+
+          new_progress = {
+              'current_job': '물품',
+              'current_year': year,
+              'current_month': month,
+              'daily_api_calls': 0,
+              'total_collected': 0,
+              'last_run_date': ''
+          }
+          with open('progress.json', 'w', encoding='utf-8') as f:
+              json.dump(new_progress, f, ensure_ascii=False, indent=2)
+          print(f'🔄 진행 위치 리셋 완료: 물품 {year}년 {month}월부터 시작')
+          "
+
+          # Drive에 즉시 업로드
+          python collectors/g2b/upload_progress.py
+          echo "✅ 리셋된 progress.json을 Drive에 업로드 완료"
 
       # 🚀 메인 수집기 실행 (로그 파일에 기록하며 실행)
       - name: Run G2B Collector
