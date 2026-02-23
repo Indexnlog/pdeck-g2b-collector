@@ -2,7 +2,9 @@ name: G2B Auto Collector
 
 on:
   schedule:
-    - cron: "0 23 * * *" # UTC 23:00 = KST 08:00 (매일 아침 8시 실행)
+    - cron: "0 23 * * *"  # UTC 23:00 = KST 08:00
+    - cron: "0 5 * * *"   # UTC 05:00 = KST 14:00
+    - cron: "0 11 * * *"  # UTC 11:00 = KST 20:00
   workflow_dispatch:
     inputs:
       skip_connection_test:

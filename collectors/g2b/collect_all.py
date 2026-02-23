@@ -61,7 +61,7 @@ except ImportError as e:
 PROGRESS_FILE_ID = "1_AKg04eOjQy3KBcjhp2xkkm1jzBcAjn-"
 SHARED_DRIVE_ID = "0AOi7Y50vK8xiUk9PVA"
 API_KEY = os.getenv("API_KEY")
-MAX_API_CALLS = 500
+MAX_API_CALLS = 1000
 
 
 # -----------------------------------------------------------
@@ -188,13 +188,11 @@ def main():
             if not progress:
                 raise Exception("progress.json 로드 실패 - Drive에서 파일을 가져올 수 없습니다")
 
-        # 4. 한국 시간 기준 일일 리셋
+        # 4. 실행마다 API 카운터 리셋 (하루 여러 번 실행 대응)
         tz = pytz.timezone("Asia/Seoul")
         today = datetime.now(tz).strftime("%Y-%m-%d")
-        if progress.get("last_api_reset_date") != today:
-            progress["daily_api_calls"] = 0
-            progress["last_api_reset_date"] = today
-            log(f"🔄 일일 API 카운터 리셋 (날짜: {today})")
+        progress["daily_api_calls"] = 0
+        log(f"🔄 API 카운터 리셋 (실행 시각: {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')})")
 
         # 5. G2B 클라이언트 생성
         client = G2BClient(API_KEY)
