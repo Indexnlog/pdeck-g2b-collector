@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS contracts (
 
 
 def get_connection():
-    url = os.environ.get("DATABASE_URL")
+    url = os.environ.get("DATABASE_URL", "").strip()
     if not url:
         raise EnvironmentError("DATABASE_URL 환경변수가 설정되지 않았습니다")
     return psycopg2.connect(url)
