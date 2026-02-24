@@ -221,19 +221,27 @@ jobs:
           run_url = 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
           timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S KST')
 
-          # 로그 파일에서 마지막 에러 추출 시도
-          error_summary = '로그를 확인해주세요'
+          # 타임아웃 여부 판단 (collection.log에 수집 데이터가 있으면 타임아웃으로 간주)
+          is_timeout = False
+          insert_summary = ''
           try:
               with open('collection.log', 'r', encoding='utf-8') as f:
-                  lines = f.readlines()
-                  for line in reversed(lines[-20:]):
-                      if '❌' in line or 'ERROR' in line or 'Exception' in line:
-                          error_summary = line.strip()[:200]
-                          break
+                  content = f.read()
+                  if 'DB insert' in content or 'insert' in content.lower():
+                      is_timeout = True
+                      # 마지막 insert 건수 추출
+                      lines = content.splitlines()
+                      for line in reversed(lines):
+                          if 'insert' in line.lower():
+                              insert_summary = line.strip()[:100]
+                              break
           except:
               pass
 
-          message = f'🚨 GitHub Actions 실패\n\n⏰ 시간: {timestamp}\n🔗 로그: {run_url}\n❌ 에러: {error_summary}\n\n워크플로우가 실패했습니다. 로그를 확인해주세요.'
+          if is_timeout:
+              message = f'⏰ 타임아웃으로 종료 (정상)\n\n수집 중 110분 제한 도달 — 다음 실행에서 이어서 수집합니다.\n⏰ 시간: {timestamp}\n🔗 로그: {run_url}'
+          else:
+              message = f'🚨 GitHub Actions 실패\n\n⏰ 시간: {timestamp}\n🔗 로그: {run_url}\n\n로그를 확인해주세요.'
 
           send_slack_message(message)
           " || echo "⚠️ Slack 알림 전송 실패 (계속 진행)"
