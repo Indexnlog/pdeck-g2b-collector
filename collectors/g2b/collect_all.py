@@ -245,6 +245,15 @@ def main():
                 "current_month": next_month,
             })
 
+            # 타임아웃 대비: 매 구간마다 로컬 파일에 progress 저장
+            # (upload_progress.py step이 이 파일을 Drive에 올림)
+            try:
+                import json as _json
+                with open("progress.json", "w", encoding="utf-8") as _f:
+                    _json.dump(progress, _f, ensure_ascii=False)
+            except Exception:
+                pass
+
             # 연속 0건 insert가 너무 많으면 progress 이상 경고 후 중단
             if consecutive_zero_inserts >= ZERO_INSERT_ALARM:
                 warn_msg = (
