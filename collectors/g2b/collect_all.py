@@ -174,14 +174,25 @@ def main():
 
         # 5. API 카운터 리셋
         tz = pytz.timezone("Asia/Seoul")
-        today = datetime.now(tz).strftime("%Y-%m-%d")
+        now = datetime.now(tz)
+        today = now.strftime("%Y-%m-%d")
         progress["daily_api_calls"] = 0
-        log(f"🔄 API 카운터 리셋 (실행 시각: {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')})")
+        log(f"🔄 API 카운터 리셋 (실행 시각: {now.strftime('%Y-%m-%d %H:%M:%S')})")
 
         # 6. G2B 클라이언트 생성
         client = G2BClient(API_KEY)
 
-        # 7. 데이터 수집 루프
+        # 7. 수집 종료 기준: 현재 달의 전달까지 (매월 자동 갱신)
+        if now.month == 1:
+            limit_year, limit_month = now.year - 1, 12
+        else:
+            limit_year, limit_month = now.year, now.month - 1
+        log(f"📅 수집 범위: ~ {limit_year}년 {limit_month}월")
+
+        # 8. 데이터 수집 루프
+        consecutive_zero_inserts = 0  # 연속 0건 insert 카운터 (progress 이상 감지용)
+        ZERO_INSERT_ALARM = 50        # 이 이상 연속 0건이면 Slack 경고
+
         while progress["daily_api_calls"] < MAX_API_CALLS:
             job = progress["current_job"]
             year = progress["current_year"]
@@ -204,6 +215,12 @@ def main():
                     total_new += inserted
                     progress["total_collected"] += inserted
                     log(f"✅ DB insert 완료: {label}")
+
+                    if inserted > 0:
+                        consecutive_zero_inserts = 0
+                    else:
+                        consecutive_zero_inserts += 1
+                        log(f"⚠️ 중복 구간 (이미 수집됨): {consecutive_zero_inserts}회 연속")
                 else:
                     log(f"ℹ️ {job} {year}년 {month}월 - 데이터 없음")
 
@@ -228,9 +245,23 @@ def main():
                 "current_month": next_month,
             })
 
-            # 2026년 1월까지만 수집 (2016-02 ~ 2026-01)
-            if next_year > 2026 or (next_year == 2026 and next_month > 1):
-                log("📅 2026년 1월까지 모든 데이터 수집 완료")
+            # 연속 0건 insert가 너무 많으면 progress 이상 경고 후 중단
+            if consecutive_zero_inserts >= ZERO_INSERT_ALARM:
+                warn_msg = (
+                    f"⚠️ progress 위치 이상 감지\n"
+                    f"{consecutive_zero_inserts}개 구간 연속 0건 insert.\n"
+                    f"현재 위치: {job} {year}년 {month}월\n"
+                    f"이미 수집된 구간을 헛돌고 있을 수 있습니다.\n"
+                    f"GitHub Actions > G2B > Reset Progress Position 으로 위치를 재설정하세요."
+                )
+                log(warn_msg)
+                send_slack_message(warn_msg)
+                errors.append("progress 위치 이상 - 수집 중단")
+                break
+
+            # 수집 종료 조건: 전달까지만
+            if next_year > limit_year or (next_year == limit_year and next_month > limit_month):
+                log(f"📅 {limit_year}년 {limit_month}월까지 모든 데이터 수집 완료")
                 break
 
         # 8. 진행 상황 저장 (Drive)

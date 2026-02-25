@@ -165,12 +165,20 @@ jobs:
               print(f'❌ 잘못된 형식: {raw!r}. 예시: 2016-02')
               sys.exit(1)
 
+          # 기존 total_collected 보존 (리셋해도 누적 건수는 유지)
+          try:
+              with open('progress.json', 'r', encoding='utf-8') as f:
+                  existing = json.load(f)
+              prev_total = existing.get('total_collected', 0)
+          except Exception:
+              prev_total = 0
+
           new_progress = {
               'current_job': '물품',
               'current_year': year,
               'current_month': month,
               'daily_api_calls': 0,
-              'total_collected': 0,
+              'total_collected': prev_total,
               'last_run_date': ''
           }
           with open('progress.json', 'w', encoding='utf-8') as f:
