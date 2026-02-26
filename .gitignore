@@ -66,5 +66,9 @@ logs/
 *.tmp
 nohup.out
 
-# (선택) 로컬 테스트로 변동된 progress를 무시하고 싶다면 주석 해제
-# collectors/g2b/progress.json
+# 로컬 progress 백업 파일
+progress.json
+progress_backup.json
+
+# Claude Code 설정 폴더
+.claude/
