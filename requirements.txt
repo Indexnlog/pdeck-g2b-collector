@@ -7,12 +7,6 @@ pytz==2024.1
 # 환경 변수 관리
 python-dotenv==1.0.1
 
-# 구글 드라이브 API 연동 (필수)
-google-api-python-client==2.127.0
-google-auth==2.29.0
-google-auth-httplib2==0.2.0
-google-auth-oauthlib==1.2.0
-
 # (선택) Slack 알림
 slack-sdk==3.27.1
 

@@ -27,6 +27,18 @@ CREATE TABLE IF NOT EXISTS contracts (
 );
 """
 
+CREATE_PROGRESS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS progress (
+    id              INT         PRIMARY KEY DEFAULT 1,
+    current_job     VARCHAR(20) NOT NULL DEFAULT '물품',
+    current_year    SMALLINT    NOT NULL DEFAULT 2016,
+    current_month   SMALLINT    NOT NULL DEFAULT 2,
+    daily_api_calls INT         NOT NULL DEFAULT 0,
+    total_collected BIGINT      NOT NULL DEFAULT 0,
+    last_run_date   VARCHAR(10) NOT NULL DEFAULT ''
+);
+"""
+
 
 def get_connection():
     url = os.environ.get("DATABASE_URL", "").strip()
@@ -40,7 +52,58 @@ def create_table():
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(CREATE_TABLE_SQL)
-    log("✅ contracts 테이블 준비 완료")
+            cur.execute(CREATE_PROGRESS_TABLE_SQL)
+    log("✅ contracts / progress 테이블 준비 완료")
+
+
+def load_progress() -> dict:
+    """progress 테이블에서 진행 상태 로드. 없으면 기본값 반환."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT current_job, current_year, current_month, "
+                "daily_api_calls, total_collected, last_run_date "
+                "FROM progress WHERE id = 1"
+            )
+            row = cur.fetchone()
+    if row:
+        return {
+            "current_job":     row[0],
+            "current_year":    row[1],
+            "current_month":   row[2],
+            "daily_api_calls": row[3],
+            "total_collected": row[4],
+            "last_run_date":   row[5],
+        }
+    return {
+        "current_job":     "물품",
+        "current_year":    2016,
+        "current_month":   2,
+        "daily_api_calls": 0,
+        "total_collected": 0,
+        "last_run_date":   "",
+    }
+
+
+def save_progress(progress: dict) -> None:
+    """progress 테이블에 진행 상태 저장 (upsert)."""
+    sql = """
+        INSERT INTO progress
+            (id, current_job, current_year, current_month,
+             daily_api_calls, total_collected, last_run_date)
+        VALUES (1, %(current_job)s, %(current_year)s, %(current_month)s,
+                %(daily_api_calls)s, %(total_collected)s, %(last_run_date)s)
+        ON CONFLICT (id) DO UPDATE SET
+            current_job     = EXCLUDED.current_job,
+            current_year    = EXCLUDED.current_year,
+            current_month   = EXCLUDED.current_month,
+            daily_api_calls = EXCLUDED.daily_api_calls,
+            total_collected = EXCLUDED.total_collected,
+            last_run_date   = EXCLUDED.last_run_date
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, progress)
 
 
 def insert_contracts(rows: list) -> int:

@@ -31,9 +31,6 @@ jobs:
     env:
       # GitHub Secrets에서 가져옴
       API_KEY: ${{ secrets.API_KEY }}
-      GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-      GDRIVE_PROGRESS_FILE_ID: ${{ secrets.GDRIVE_PROGRESS_FILE_ID }}
-      GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -66,40 +63,15 @@ jobs:
           print('✅ contracts 테이블 준비 완료')
           "
 
-      # 🔐 보안 키 생성 (Base64 디코딩)
-      - name: Create service_account.json
-        run: |
-          echo "${{ secrets.GOOGLE_CREDENTIALS }}" | base64 -d > service_account.json
-          if [ -s "service_account.json" ]; then
-            echo "✅ service_account.json 생성 완료"
-          else
-            echo "❌ service_account.json 생성 실패"
-            exit 1
-          fi
-
-      # 🧪 연결 테스트 (드라이브 & 슬랙 & G2B API)
+      # 🧪 연결 테스트 (G2B API)
       - name: Connection Tests
         if: ${{ !inputs.skip_connection_test }}
         run: |
           echo "🧪 시스템 연결 테스트..."
           python -c "
-          import sys
           import os
-          from utils.drive import test_drive_connection
           from utils.g2b_client import G2BClient
 
-          # 1. Google Drive 연결 테스트
-          print('📂 Google Drive 연결 테스트...')
-          try:
-              if not test_drive_connection():
-                  print('❌ Google Drive 연결 실패')
-                  sys.exit(1)
-              print('✅ Google Drive 연결 성공')
-          except Exception as e:
-              print(f'❌ Google Drive 테스트 중 오류: {e}')
-              sys.exit(1)
-
-          # 2. G2B API 연결 테스트 (실패해도 경고만 출력, 수집은 계속 진행)
           print('📡 G2B API 연결 테스트...')
           try:
               api_key = os.getenv('API_KEY')
@@ -114,37 +86,20 @@ jobs:
           except Exception as e:
               print(f'⚠️ G2B API 테스트 중 오류: {e} (수집은 계속 진행)')
 
-          print('✅ 연결 테스트 완료 (G2B API 오류는 수집 중 재시도로 처리)')
+          print('✅ 연결 테스트 완료')
           "
         continue-on-error: false
-
-      # 📥 Drive에서 상태 파일(progress.json) 다운로드
-      - name: Download progress.json
-        timeout-minutes: 5
-        run: |
-          python collectors/g2b/download_progress.py
-          if [ -f "progress.json" ]; then
-            echo "✅ progress.json 동기화 완료"
-          else
-            echo "❌ progress.json 다운로드 실패 (초기 실행이면 로컬 파일 사용)"
-            # 실패해도 로컬 파일이 있으면 계속 진행하도록 exit 1 제거 (선택사항)
-          fi
 
       # 🔄 (선택) API 카운트 강제 리셋
       - name: Force Reset API Count
         if: ${{ inputs.force_api_reset }}
         run: |
           python -c "
-          import json
-          try:
-              with open('progress.json', 'r') as f:
-                  data = json.load(f)
-              data['daily_api_calls'] = 0
-              with open('progress.json', 'w') as f:
-                  json.dump(data, f)
-              print('🔄 API 카운트 0으로 초기화됨')
-          except Exception as e:
-              print(f'⚠ 리셋 실패: {e}')
+          from utils.db import load_progress, save_progress
+          progress = load_progress()
+          progress['daily_api_calls'] = 0
+          save_progress(progress)
+          print('🔄 API 카운트 0으로 초기화됨')
           "
 
       # 🔄 (선택) 수집 시작 위치 리셋 (예: "2016-02")
@@ -152,7 +107,8 @@ jobs:
         if: ${{ inputs.reset_progress != '' }}
         run: |
           python -c "
-          import json, sys
+          import sys
+          from utils.db import load_progress, save_progress
 
           raw = '${{ inputs.reset_progress }}'.strip()
           try:
@@ -165,12 +121,7 @@ jobs:
               sys.exit(1)
 
           # 기존 total_collected 보존 (리셋해도 누적 건수는 유지)
-          try:
-              with open('progress.json', 'r', encoding='utf-8') as f:
-                  existing = json.load(f)
-              prev_total = existing.get('total_collected', 0)
-          except Exception:
-              prev_total = 0
+          prev_total = load_progress().get('total_collected', 0)
 
           new_progress = {
               'current_job': '물품',
@@ -180,14 +131,9 @@ jobs:
               'total_collected': prev_total,
               'last_run_date': ''
           }
-          with open('progress.json', 'w', encoding='utf-8') as f:
-              json.dump(new_progress, f, ensure_ascii=False, indent=2)
+          save_progress(new_progress)
           print(f'🔄 진행 위치 리셋 완료: 물품 {year}년 {month}월부터 시작')
           "
-
-          # Drive에 즉시 업로드
-          python collectors/g2b/upload_progress.py
-          echo "✅ 리셋된 progress.json을 Drive에 업로드 완료"
 
       # 🚀 메인 수집기 실행 (로그 파일에 기록하며 실행)
       - name: Run G2B Collector
@@ -209,12 +155,6 @@ jobs:
 
           echo "⏰ 종료 시간: $(date '+%Y-%m-%d %H:%M:%S %Z')"
         continue-on-error: false
-
-      # 📤 상태 파일(progress.json) Drive에 업로드 (실패해도 실행)
-      - name: Upload progress.json
-        if: always()
-        run: |
-          python collectors/g2b/upload_progress.py
 
       # 🚨 실패 시 상세 Slack 알림
       - name: Notify Failure
@@ -266,9 +206,3 @@ jobs:
           retention-days: 5
           # ⚠️ 주의: service_account.json은 절대 올리지 않음!
 
-      # 🧹 보안 파일 삭제
-      - name: Cleanup Secrets
-        if: always()
-        run: |
-          rm -f service_account.json
-          echo "🧹 보안 파일 정리 완료"

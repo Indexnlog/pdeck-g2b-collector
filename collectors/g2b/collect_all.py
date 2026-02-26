@@ -25,19 +25,13 @@ print(f"📂 루트 내용물: {os.listdir(project_root)}")
 # imports
 # -----------------------------------------------------------
 try:
-    from utils.drive import (
-        download_progress_json,
-        upload_progress_json,
-        test_drive_connection,
-    )
-    from utils.db import create_table, insert_contracts
+    from utils.db import create_table, insert_contracts, load_progress, save_progress
     from utils.g2b_client import G2BClient
     from utils.logger import log
     from utils.slack import send_slack_message
 
     from utils.api_error_handler import (
         error_context,
-        safe_api_call,
         APIException,
         NetworkError,
         RateLimitError,
@@ -53,7 +47,6 @@ except ImportError as e:
 # -----------------------------------------------------------
 # 설정값
 # -----------------------------------------------------------
-PROGRESS_FILE_ID = "1_AKg04eOjQy3KBcjhp2xkkm1jzBcAjn-"
 API_KEY = os.getenv("API_KEY")
 MAX_API_CALLS = 1000
 
@@ -151,26 +144,11 @@ def main():
         with error_context("DB 테이블 생성"):
             create_table()
 
-        # 3. Drive 연결 테스트 (progress.json용)
-        with error_context("Google Drive 연결 확인"):
-            connection_test = safe_api_call(
-                test_drive_connection,
-                max_retries=3,
-                default_value=False
-            )
-            if not connection_test:
-                raise NetworkError("Google Drive 연결에 실패했습니다")
-
-        # 4. progress.json 다운로드
-        with error_context("progress.json 다운로드"):
-            progress = safe_api_call(
-                download_progress_json,
-                PROGRESS_FILE_ID,
-                max_retries=3,
-                default_value=None
-            )
-            if not progress:
-                raise Exception("progress.json 로드 실패 - Drive에서 파일을 가져올 수 없습니다")
+        # 3. progress 로드
+        with error_context("progress 로드"):
+            progress = load_progress()
+            log(f"📊 현재 진행 위치: {progress['current_job']} {progress['current_year']}년 {progress['current_month']}월")
+            log(f"📊 누적 수집: {progress['total_collected']:,}건")
 
         # 5. API 카운터 리셋 (날짜가 바뀐 경우만 리셋)
         tz = pytz.timezone("Asia/Seoul")
@@ -261,12 +239,9 @@ def main():
                 "current_month": next_month,
             })
 
-            # 타임아웃 대비: 매 구간마다 로컬 파일에 progress 저장
-            # (upload_progress.py step이 이 파일을 Drive에 올림)
+            # 타임아웃 대비: 매 구간마다 DB에 progress 저장
             try:
-                import json as _json
-                with open("progress.json", "w", encoding="utf-8") as _f:
-                    _json.dump(progress, _f, ensure_ascii=False)
+                save_progress(progress)
             except Exception:
                 pass
 
@@ -289,15 +264,15 @@ def main():
                 log(f"📅 {limit_year}년 {limit_month}월까지 모든 데이터 수집 완료")
                 break
 
-        # 8. 진행 상황 저장 (Drive)
+        # 8. 진행 상황 저장 (DB)
         progress["last_run_date"] = today
-        with error_context("progress.json 업로드"):
+        with error_context("progress DB 저장"):
             try:
-                upload_progress_json(progress, PROGRESS_FILE_ID)
-                log("✅ progress.json 업로드 완료")
+                save_progress(progress)
+                log("✅ progress DB 저장 완료")
             except Exception as e:
-                log(f"⚠️ progress.json 업로드 실패: {e}")
-                errors.append(f"progress.json 업로드 실패: {e}")
+                log(f"⚠️ progress DB 저장 실패: {e}")
+                errors.append(f"progress DB 저장 실패: {e}")
 
         # 9. 결과 알림
         status_emoji = "🎯" if not errors else "⚠️"
