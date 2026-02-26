@@ -128,30 +128,31 @@ ValidationError: API_KEY가 설정되지 않았습니다
 
 ---
 
-### ❌ API 호출 한도 초과
+### ❌ G2B API 429 Too Many Requests (일일 한도 초과)
 
 **증상:**
 ```
-RateLimitError: API 호출 한도를 초과했습니다
+❌ G2B API 연결 실패: Max retries exceeded with url: ...
+   (Caused by ResponseError('too many 429 error responses'))
 ```
 
 **원인:**
-- 일일 500회 한도 초과
-- 짧은 시간에 너무 많은 요청
+- G2B API 일일 호출 한도 초과
+- 하루 3회 실행 × 1000회 = 3000회 호출 시도 → 한도 초과 (2026-02-25 발견)
 
-**해결방법:**
+**현재 동작 (2026-02-26 수정 후):**
+- `daily_api_calls` 카운터를 날짜가 바뀔 때만 리셋 (기존: 매 실행마다 리셋)
+- 당일 이미 한도(1000회) 소진 시 Slack 알림 후 **정상 종료** (실패 처리 아님)
+- Connection Tests에서 G2B API 429 발생 시 경고만 출력하고 수집 계속 진행
 
-1. progress.json 확인:
-   - Google Drive에서 파일 열기
-   - `daily_api_calls` 값 확인
+**progress.json에서 오늘 사용량 확인:**
+- Google Drive에서 파일 열기
+- `daily_api_calls`: 오늘 누적 호출 횟수
+- `last_run_date`: 마지막 실행 날짜 (이 날짜가 오늘이면 카운터 유지)
 
-2. 강제 리셋 (주의!):
-   - GitHub Actions → Run workflow
-   - `force_api_reset` 옵션 체크
-   - 실행
-
-3. 다음 날까지 대기:
-   - 매일 자정(KST)에 자동 리셋됨
+**수동으로 카운터 리셋이 필요한 경우 (주의!):**
+- GitHub Actions → Run workflow
+- `force_api_reset` 옵션 체크 후 실행
 
 ---
 
