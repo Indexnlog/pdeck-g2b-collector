@@ -99,7 +99,7 @@ jobs:
               print(f'❌ Google Drive 테스트 중 오류: {e}')
               sys.exit(1)
 
-          # 2. G2B API 연결 테스트
+          # 2. G2B API 연결 테스트 (실패해도 경고만 출력, 수집은 계속 진행)
           print('📡 G2B API 연결 테스트...')
           try:
               api_key = os.getenv('API_KEY')
@@ -108,14 +108,13 @@ jobs:
               else:
                   client = G2BClient(api_key)
                   if not client.test_connection():
-                      print('❌ G2B API 연결 실패')
-                      sys.exit(1)
-                  print('✅ G2B API 연결 성공')
+                      print('⚠️ G2B API 연결 실패 (429 등 일시 오류일 수 있음, 수집은 계속 진행)')
+                  else:
+                      print('✅ G2B API 연결 성공')
           except Exception as e:
-              print(f'❌ G2B API 테스트 중 오류: {e}')
-              sys.exit(1)
+              print(f'⚠️ G2B API 테스트 중 오류: {e} (수집은 계속 진행)')
 
-          print('✅ 모든 연결 테스트 통과')
+          print('✅ 연결 테스트 완료 (G2B API 오류는 수집 중 재시도로 처리)')
           "
         continue-on-error: false
 

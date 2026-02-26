@@ -172,12 +172,28 @@ def main():
             if not progress:
                 raise Exception("progress.json 로드 실패 - Drive에서 파일을 가져올 수 없습니다")
 
-        # 5. API 카운터 리셋
+        # 5. API 카운터 리셋 (날짜가 바뀐 경우만 리셋)
         tz = pytz.timezone("Asia/Seoul")
         now = datetime.now(tz)
         today = now.strftime("%Y-%m-%d")
-        progress["daily_api_calls"] = 0
-        log(f"🔄 API 카운터 리셋 (실행 시각: {now.strftime('%Y-%m-%d %H:%M:%S')})")
+        last_run = progress.get("last_run_date", "")
+
+        if last_run != today:
+            progress["daily_api_calls"] = 0
+            log(f"🔄 API 카운터 리셋 (새 날짜: {today})")
+        else:
+            used_today = progress.get("daily_api_calls", 0)
+            log(f"📊 오늘 이미 사용한 API 호출: {used_today}/{MAX_API_CALLS}")
+            if used_today >= MAX_API_CALLS:
+                msg = (
+                    f"⛔ G2B API 일일 한도 소진 ({used_today}/{MAX_API_CALLS}회)\n"
+                    f"오늘 3회 실행 모두 완료. 내일 이어서 수집합니다.\n"
+                    f"현재 위치: {progress.get('current_job')} "
+                    f"{progress.get('current_year')}년 {progress.get('current_month')}월"
+                )
+                log(msg)
+                send_slack_message(msg)
+                return True  # 정상 종료 (실패 아님)
 
         # 6. G2B 클라이언트 생성
         client = G2BClient(API_KEY)
@@ -293,7 +309,7 @@ def main():
 
         message = f"""{status_emoji} G2B 수집 완료
 오늘 수집: {total_new:,}건 → CockroachDB insert
-API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS}
+API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS} (오늘 누적)
 처리 구간: {len(saved)}개
 총 누적: {progress.get('total_collected', 0):,}건{error_summary}
 """
