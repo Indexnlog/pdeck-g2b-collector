@@ -162,7 +162,7 @@ jobs:
         run: |
           python -c "
           from utils.slack import send_slack_message
-          import os
+          from utils.db import load_progress, get_connection
           from datetime import datetime
 
           run_url = 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
@@ -170,23 +170,31 @@ jobs:
 
           # 타임아웃 여부 판단 (collection.log에 수집 데이터가 있으면 타임아웃으로 간주)
           is_timeout = False
-          insert_summary = ''
           try:
               with open('collection.log', 'r', encoding='utf-8') as f:
                   content = f.read()
                   if 'DB insert' in content or 'insert' in content.lower():
                       is_timeout = True
-                      # 마지막 insert 건수 추출
-                      lines = content.splitlines()
-                      for line in reversed(lines):
-                          if 'insert' in line.lower():
-                              insert_summary = line.strip()[:100]
-                              break
           except:
               pass
 
           if is_timeout:
-              message = f'⏰ 타임아웃으로 종료 (정상)\n\n수집 중 110분 제한 도달 — 다음 실행에서 이어서 수집합니다.\n⏰ 시간: {timestamp}\n🔗 로그: {run_url}'
+              try:
+                  progress = load_progress()
+                  daily_api = progress.get('daily_api_calls', 0)
+                  total = progress.get('total_collected', 0)
+                  cur_job = progress.get('current_job', '-')
+                  cur_year = progress.get('current_year', '-')
+                  cur_month = progress.get('current_month', '-')
+                  conn = get_connection()
+                  with conn.cursor() as c:
+                      c.execute('SELECT bsns_div_nm, MAX(collected_year * 100 + collected_month), COUNT(*) FROM contracts GROUP BY bsns_div_nm ORDER BY bsns_div_nm')
+                      job_rows = c.fetchall()
+                  conn.close()
+                  job_lines = '\n'.join(f'  • {r[0]}: ~{r[1]//100}년 {r[1]%100}월 ({r[2]:,}건)' for r in job_rows)
+                  message = f'⏰ 타임아웃으로 종료 (정상)\n\n수집 중 110분 제한 도달 — 다음 실행에서 이어서 수집합니다.\n⏰ 시간: {timestamp}\n\n📊 API 사용: {daily_api}/1000회\n📦 총 누적: {total:,}건\n📍 다음 시작 위치: {cur_job} {cur_year}년 {cur_month}월\n\n📋 종류별 완료 구간:\n{job_lines}\n\n🔗 로그: {run_url}'
+              except Exception as e:
+                  message = f'⏰ 타임아웃으로 종료 (정상)\n\n수집 중 110분 제한 도달 — 다음 실행에서 이어서 수집합니다.\n⏰ 시간: {timestamp}\n🔗 로그: {run_url}'
           else:
               message = f'🚨 GitHub Actions 실패\n\n⏰ 시간: {timestamp}\n🔗 로그: {run_url}\n\n로그를 확인해주세요.'
 
