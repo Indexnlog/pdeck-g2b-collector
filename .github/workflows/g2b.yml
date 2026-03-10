@@ -2,9 +2,7 @@ name: G2B Auto Collector
 
 on:
   schedule:
-    - cron: "0 23 * * *"  # UTC 23:00 = KST 08:00
-    - cron: "0 5 * * *"   # UTC 05:00 = KST 14:00
-    - cron: "0 11 * * *"  # UTC 11:00 = KST 20:00
+    - cron: "0 23 * * *"  # UTC 23:00 = KST 08:00 (하루 1회)
   workflow_dispatch:
     inputs:
       skip_connection_test:
@@ -148,17 +146,16 @@ jobs:
             echo "✅ 수집 완료"
             echo "collector_status=success" >> $GITHUB_OUTPUT
           else
-            echo "❌ 수집 실패 (종료 코드: $?)"
+            echo "❌ 수집 실패 또는 타임아웃 (종료 코드: $?)"
             echo "collector_status=failed" >> $GITHUB_OUTPUT
-            exit 1
           fi
 
           echo "⏰ 종료 시간: $(date '+%Y-%m-%d %H:%M:%S %Z')"
-        continue-on-error: false
+        continue-on-error: true
 
-      # 🚨 실패 시 상세 Slack 알림
+      # 🚨 실패/타임아웃 시 상세 Slack 알림
       - name: Notify Failure
-        if: failure()
+        if: steps.run_collector.outcome == 'failure'
         run: |
           python -c "
           from utils.slack import send_slack_message
