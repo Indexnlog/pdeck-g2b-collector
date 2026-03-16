@@ -18,6 +18,13 @@ project_root = os.path.dirname(collectors_dir)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+# 로컬 .env 로드
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(project_root, ".env"))
+except ImportError:
+    pass
+
 print(f"✅ 프로젝트 루트: {project_root}")
 print(f"📂 루트 내용물: {os.listdir(project_root)}")
 
@@ -25,7 +32,7 @@ print(f"📂 루트 내용물: {os.listdir(project_root)}")
 # imports
 # -----------------------------------------------------------
 try:
-    from utils.db import create_table, insert_contracts, load_progress, save_progress
+    from utils.db import create_table, insert_contracts, load_progress, save_progress, save_run_history
     from utils.g2b_client import G2BClient
     from utils.logger import log
     from utils.slack import send_slack_message
@@ -150,7 +157,7 @@ def main():
             log(f"📊 현재 진행 위치: {progress['current_job']} {progress['current_year']}년 {progress['current_month']}월")
             log(f"📊 누적 수집: {progress['total_collected']:,}건")
 
-        # 5. API 카운터 리셋 (날짜가 바뀐 경우만 리셋)
+        # 4. API 카운터 리셋 (날짜가 바뀐 경우만 리셋) — Slack 알림보다 먼저!
         tz = pytz.timezone("Asia/Seoul")
         now = datetime.now(tz)
         today = now.strftime("%Y-%m-%d")
@@ -165,13 +172,20 @@ def main():
             if used_today >= MAX_API_CALLS:
                 msg = (
                     f"⛔ G2B API 일일 한도 소진 ({used_today}/{MAX_API_CALLS}회)\n"
-                    f"오늘 3회 실행 모두 완료. 내일 이어서 수집합니다.\n"
+                    f"내일 이어서 수집합니다.\n"
                     f"현재 위치: {progress.get('current_job')} "
                     f"{progress.get('current_year')}년 {progress.get('current_month')}월"
                 )
                 log(msg)
                 send_slack_message(msg)
                 return True  # 정상 종료 (실패 아님)
+
+        # 5. 수집 시작 Slack 알림 (리셋 후 정확한 값 표시)
+        send_slack_message(
+            f"🚀 G2B 수집 시작\n"
+            f"현재 위치: {progress['current_job']} {progress['current_year']}년 {progress['current_month']}월\n"
+            f"API: {progress.get('daily_api_calls', 0)}/{MAX_API_CALLS}"
+        )
 
         # 6. G2B 클라이언트 생성
         client = G2BClient(API_KEY)
@@ -228,8 +242,10 @@ def main():
                 errors.append(f"API 에러: {job} {year}-{month} - {e}")
 
             except Exception as e:
-                log(f"❌ 예상치 못한 에러 ({job} {year}-{month}): {e}")
-                errors.append(f"예상치 못한 에러: {job} {year}-{month} - {e}")
+                err_detail = f"{type(e).__name__}: {e}" if str(e) else f"{type(e).__name__} (메시지 없음)"
+                log(f"❌ 예상치 못한 에러 ({job} {year}-{month}): {err_detail}")
+                log(f"   traceback: {traceback.format_exc()}")
+                errors.append(f"예상치 못한 에러: {job} {year}-{month} - {err_detail}")
 
             # 다음 구간으로 이동
             next_job, next_year, next_month = get_next_period(job, year, month)
@@ -274,7 +290,21 @@ def main():
                 log(f"⚠️ progress DB 저장 실패: {e}")
                 errors.append(f"progress DB 저장 실패: {e}")
 
-        # 9. 결과 알림
+        # 9. 실행 이력 저장
+        try:
+            save_run_history(
+                run_date=today,
+                collected=total_new,
+                api_calls=progress["daily_api_calls"],
+                end_job=progress["current_job"],
+                end_year=progress["current_year"],
+                end_month=progress["current_month"],
+            )
+            log("✅ 실행 이력 저장 완료")
+        except Exception as e:
+            log(f"⚠️ 실행 이력 저장 실패: {e}")
+
+        # 10. 결과 알림
         status_emoji = "🎯" if not errors else "⚠️"
         error_summary = ""
         if errors:

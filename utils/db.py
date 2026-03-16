@@ -39,6 +39,19 @@ CREATE TABLE IF NOT EXISTS progress (
 );
 """
 
+CREATE_RUN_HISTORY_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS run_history (
+    id              SERIAL      PRIMARY KEY,
+    run_date        VARCHAR(10) NOT NULL,
+    collected       INT         NOT NULL DEFAULT 0,
+    api_calls       INT         NOT NULL DEFAULT 0,
+    end_job         VARCHAR(20),
+    end_year        SMALLINT,
+    end_month       SMALLINT,
+    created_at      TIMESTAMP   DEFAULT now()
+);
+"""
+
 
 def get_connection():
     url = os.environ.get("DATABASE_URL", "").strip()
@@ -53,7 +66,8 @@ def create_table():
         with conn.cursor() as cur:
             cur.execute(CREATE_TABLE_SQL)
             cur.execute(CREATE_PROGRESS_TABLE_SQL)
-    log("✅ contracts / progress 테이블 준비 완료")
+            cur.execute(CREATE_RUN_HISTORY_TABLE_SQL)
+    log("✅ contracts / progress / run_history 테이블 준비 완료")
 
 
 def load_progress() -> dict:
@@ -106,24 +120,43 @@ def save_progress(progress: dict) -> None:
             cur.execute(sql, progress)
 
 
+def save_run_history(run_date: str, collected: int, api_calls: int,
+                     end_job: str, end_year: int, end_month: int) -> None:
+    """실행 결과를 run_history 테이블에 기록."""
+    sql = """
+        INSERT INTO run_history (run_date, collected, api_calls, end_job, end_year, end_month)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (run_date, collected, api_calls, end_job, end_year, end_month))
+
+
 def insert_contracts(rows: list) -> int:
     """
     계약 데이터 배치 insert.
     중복(unty_cntrct_no)은 ON CONFLICT DO NOTHING으로 건너뜀.
-    실제 insert된 건수 반환.
+    대량 데이터(6만 건+)도 5000건씩 나눠서 안정적으로 처리.
     """
     if not rows:
         return 0
 
+    BATCH_SIZE = 5000  # CockroachDB 트랜잭션 크기 제한 대응
     cols = list(rows[0].keys())
-    values = [[r[c] for c in cols] for r in rows]
     sql = f"""
         INSERT INTO contracts ({', '.join(cols)})
         VALUES %s
         ON CONFLICT (unty_cntrct_no) DO NOTHING
     """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            execute_values(cur, sql, values, page_size=500)
-            inserted = cur.rowcount if cur.rowcount >= 0 else len(values)
-    return inserted
+
+    total_inserted = 0
+    for i in range(0, len(rows), BATCH_SIZE):
+        batch = rows[i:i + BATCH_SIZE]
+        values = [[r[c] for c in cols] for r in batch]
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                execute_values(cur, sql, values, page_size=500)
+                inserted = cur.rowcount if cur.rowcount >= 0 else len(values)
+                total_inserted += inserted
+
+    return total_inserted
