@@ -62,14 +62,19 @@ MAX_API_CALLS = 1000
 # XML 문자열 → DB row 리스트 변환
 # -----------------------------------------------------------
 def parse_items_to_rows(xml_content: str, year: int, month: int) -> list:
+    """XML 문자열 → DB row 리스트 (하위 호환용, 소량 데이터에만 사용)"""
     try:
         root = ET.fromstring(f"<root>{xml_content}</root>")
     except ET.ParseError as e:
         log(f"⚠️ XML 파싱 실패: {e}")
         return []
+    return parse_xml_elements(root.findall("item"), year, month)
 
+
+def parse_xml_elements(items: list, year: int, month: int) -> list:
+    """XML Element 리스트 → DB row 리스트 (메모리 효율적: 페이지 단위로 호출)"""
     rows = []
-    for item in root.findall("item"):
+    for item in items:
         def g(tag):
             el = item.find(tag)
             return el.text.strip() if el is not None and el.text else None
@@ -83,7 +88,6 @@ def parse_items_to_rows(xml_content: str, year: int, month: int) -> list:
 
         def to_date(tag):
             v = g(tag)
-            # YYYY-MM-DD 형식만 허용
             if v and len(v) == 10 and v[4] == "-":
                 return v
             return None
@@ -109,7 +113,7 @@ def parse_items_to_rows(xml_content: str, year: int, month: int) -> list:
             "collected_year":               year,
             "collected_month":              month,
         }
-        if row["unty_cntrct_no"]:  # PK 없는 행 제외
+        if row["unty_cntrct_no"]:
             rows.append(row)
 
     return rows
@@ -212,19 +216,25 @@ def main():
             log(f"{'='*60}")
 
             try:
-                xml, count, used = client.fetch_data(job, year, month)
-                progress["daily_api_calls"] += used
-
-                if count > 0:
-                    rows = parse_items_to_rows(xml, year, month)
+                # 페이지 단위로 수집 + 즉시 DB insert (메모리 절약)
+                month_total = 0
+                month_inserted = 0
+                for xml_items, page_calls in client.fetch_pages(job, year, month):
+                    progress["daily_api_calls"] += page_calls
+                    rows = parse_xml_elements(xml_items, year, month)
+                    month_total += len(rows)
                     inserted = insert_contracts(rows)
-                    label = f"{job}_{year}_{month:02d} ({inserted:,}건 insert)"
-                    saved.append(label)
-                    total_new += inserted
-                    progress["total_collected"] += inserted
-                    log(f"✅ DB insert 완료: {label}")
+                    month_inserted += inserted
+                    del rows  # 즉시 메모리 해제
 
-                    if inserted > 0:
+                if month_total > 0:
+                    label = f"{job}_{year}_{month:02d} ({month_inserted:,}건 insert)"
+                    saved.append(label)
+                    total_new += month_inserted
+                    progress["total_collected"] += month_inserted
+                    log(f"✅ DB insert 완료: {label} (총 {month_total:,}건 중)")
+
+                    if month_inserted > 0:
                         consecutive_zero_inserts = 0
                     else:
                         consecutive_zero_inserts += 1
