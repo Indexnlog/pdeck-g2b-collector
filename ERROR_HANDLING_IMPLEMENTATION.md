@@ -1,3 +1,11 @@
+# ⚠️ 현재 기준 아님
+
+이 문서는 GitHub Actions 중심으로 운영하던 시점의 구현 기록이다.
+
+현재 운영 기준은 아래 문서를 먼저 본다.
+- [OPERATIONS.md](OPERATIONS.md)
+- [OBSIDIAN_G2B_OPERATIONS.md](OBSIDIAN_G2B_OPERATIONS.md)
+
 # ✅ 에러 핸들링 및 자동화 플로우 구현 완료
 
 GitHub Actions에서 안정적으로 작동하는 자동화 시스템 구축 완료

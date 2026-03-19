@@ -1,3 +1,11 @@
+# ⚠️ 현재 기준 아님
+
+이 문서는 GitHub Actions와 Google Drive 중심 운영 당시의 트러블슈팅 문서다.
+
+현재 운영 기준은 아래 문서를 먼저 본다.
+- [OPERATIONS.md](OPERATIONS.md)
+- [OBSIDIAN_G2B_OPERATIONS.md](OBSIDIAN_G2B_OPERATIONS.md)
+
 # 🔧 문제 해결 가이드
 
 GitHub Actions에서 발생하는 오류를 해결하는 방법
