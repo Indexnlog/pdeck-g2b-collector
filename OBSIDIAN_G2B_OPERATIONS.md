@@ -14,6 +14,21 @@
 - 지금은 둘 다 로컬 기준으로 맞춤
 - GitHub Actions 실패가 다시 보이면 스케줄이 되살아났는지 먼저 확인
 
+## 어떻게 바뀌었는지
+
+1. 처음에는 GitHub Actions 중심으로 자동화를 돌림
+2. 중간에 CockroachDB, DB progress 중심으로 구조가 바뀜
+3. 이후 로컬 실행으로 옮기기 시작했지만, GitHub Actions와 예전 로컬 작업이 같이 남음
+4. 지금은 GitHub Actions 정기 실행 제거, 로컬 작업 스케줄러 1개만 사용
+
+## 왜 로컬 작업이 2개였나
+
+- 옛 작업 `G2B Auto Collector`가 예전 저장소 경로를 계속 가리키고 있었음
+- 새 작업 `pdeck-g2b-collector`를 추가했지만 옛 작업을 같이 안 지웠음
+- 그래서 한동안 로컬 작업이 2개였음
+
+현재는 `pdeck-g2b-collector`만 남음
+
 ## 현재 시작 위치
 
 - `공사 2025년 6월`
