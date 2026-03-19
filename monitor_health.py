@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 시스템 상태 모니터링 스크립트
-GitHub Actions에서 실행하여 시스템 헬스체크 수행
+로컬 운영 기준 헬스체크 수행
 """
 
 import os
 import sys
 import traceback
+import json
 from datetime import datetime
 import pytz
 
@@ -16,7 +17,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 try:
-    from utils.drive import test_drive_connection, download_progress_json
+    from utils.db import create_table, load_progress
     from utils.g2b_client import G2BClient
     from utils.slack import send_slack_message
     from utils.logger import log
@@ -29,7 +30,7 @@ def check_environment_variables():
     """환경변수 확인"""
     required_vars = [
         "API_KEY",
-        "GOOGLE_CREDENTIALS",
+        "DATABASE_URL",
         "SLACK_TOKEN",
         "SLACK_CHANNEL_ID"
     ]
@@ -47,17 +48,14 @@ def check_environment_variables():
     return True, []
 
 
-def check_drive_connection():
-    """Google Drive 연결 확인"""
+def check_database_connection():
+    """DB 연결 확인"""
     try:
-        if test_drive_connection():
-            log("✅ Google Drive 연결 성공")
-            return True, None
-        else:
-            log("❌ Google Drive 연결 실패")
-            return False, "연결 테스트 실패"
+        create_table()
+        log("✅ DB 연결 성공")
+        return True, None
     except Exception as e:
-        log(f"❌ Google Drive 연결 오류: {e}")
+        log(f"❌ DB 연결 오류: {e}")
         return False, str(e)
 
 
@@ -82,15 +80,10 @@ def check_g2b_api():
 
 
 def check_progress_status():
-    """progress.json 상태 확인"""
+    """DB progress 및 로컬 백업 상태 확인"""
     try:
-        progress_file_id = "1_AKg04eOjQy3KBcjhp2xkkm1jzBcAjn-"
-        progress = download_progress_json(progress_file_id)
+        progress = load_progress()
 
-        if not progress:
-            return False, "progress.json을 불러올 수 없음", {}
-
-        # 중요 정보 추출
         info = {
             "current_job": progress.get("current_job", "알 수 없음"),
             "current_year": progress.get("current_year", "알 수 없음"),
@@ -98,13 +91,22 @@ def check_progress_status():
             "daily_api_calls": progress.get("daily_api_calls", 0),
             "total_collected": progress.get("total_collected", 0),
             "last_run_date": progress.get("last_run_date", "없음"),
-            "last_api_reset_date": progress.get("last_api_reset_date", "없음")
         }
 
         log(f"✅ 진행 상태: {info['current_job']} {info['current_year']}-{info['current_month']}")
-        log(f"   API 사용: {info['daily_api_calls']}/500회")
+        log(f"   API 사용: {info['daily_api_calls']}/1000회")
         log(f"   총 수집: {info['total_collected']:,}건")
         log(f"   마지막 실행: {info['last_run_date']}")
+
+        backup_path = os.path.join(project_root, "progress_backup.json")
+        if os.path.exists(backup_path):
+            with open(backup_path, "r", encoding="utf-8") as f:
+                backup = json.load(f)
+            log(
+                "✅ 로컬 progress 백업 있음: "
+                f"{backup.get('current_job')} "
+                f"{backup.get('current_year')}-{backup.get('current_month')}"
+            )
 
         return True, None, info
 
@@ -158,11 +160,11 @@ def run_health_check():
         errors.append(f"환경변수 누락: {', '.join(missing)}")
 
     # 2. Google Drive 연결
-    print("\n[2/5] Google Drive 연결 확인...")
-    success, error = check_drive_connection()
-    results["Google Drive"] = "✅" if success else "❌"
+    print("\n[2/5] DB 연결 확인...")
+    success, error = check_database_connection()
+    results["DB"] = "✅" if success else "❌"
     if not success:
-        errors.append(f"Drive 연결 실패: {error}")
+        errors.append(f"DB 연결 실패: {error}")
 
     # 3. G2B API 연결
     print("\n[3/5] G2B API 연결 확인...")
@@ -171,7 +173,7 @@ def run_health_check():
     if not success:
         errors.append(f"G2B API 실패: {error}")
 
-    # 4. progress.json 상태
+    # 4. progress 상태
     print("\n[4/5] 진행 상태 확인...")
     success, error, info = check_progress_status()
     results["진행 상태"] = "✅" if success else "❌"
@@ -229,7 +231,7 @@ def run_health_check():
     print("="*60)
 
     # 중대한 문제가 있으면 실패로 종료
-    critical_errors = [e for e in errors if "환경변수" in e or "Drive 연결" in e]
+    critical_errors = [e for e in errors if "환경변수" in e or "DB 연결" in e]
     if critical_errors:
         print("\n❌ 중대한 문제 발견, 종료 코드 1")
         return False

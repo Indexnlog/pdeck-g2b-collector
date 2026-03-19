@@ -64,6 +64,9 @@
 
 실행 파일:
 - [run_collector.bat](run_collector.bat)
+- [scripts/register_task.ps1](scripts/register_task.ps1)
+- [scripts/status.ps1](scripts/status.ps1)
+- [scripts/reset_progress.ps1](scripts/reset_progress.ps1)
 
 현재 배치 내용:
 ```bat
@@ -96,8 +99,27 @@ if not exist logs mkdir logs
 - 진행 백업 파일: [progress_backup.json](progress_backup.json)
 - 로컬 로그:
   - [collector.log](logs/collector.log)
-  - [collector-local.log](logs/collector-local.log)
-  - [collector-local.err](logs/collector-local.err)
+  - [collector.lock](collector.lock) (실행 중일 때만 존재)
+
+## 운영 도구
+
+### 상태 확인
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\status.ps1
+```
+
+### 작업 스케줄러 재등록
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
+```
+
+### progress 위치 수동 재설정
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\reset_progress.ps1 -Job 공사 -Year 2025 -Month 6
+```
 
 ## 운영 체크리스트
 

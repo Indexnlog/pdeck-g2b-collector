@@ -38,13 +38,20 @@
 ## 로그 위치
 
 - `logs/collector.log`
-- `logs/collector-local.log`
-- `logs/collector-local.err`
+- `collector.lock` (실행 중일 때만 존재)
 
 ## 실행 명령
 
 ```powershell
 & .\.conda\python.exe -u collectors\g2b\collect_all.py
+```
+
+## 운영 도구
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\status.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\reset_progress.ps1 -Job 공사 -Year 2025 -Month 6
 ```
 
 ## 체크 순서

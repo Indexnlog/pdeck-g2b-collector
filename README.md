@@ -13,3 +13,5 @@
 - GitHub Actions: 수동 실행만 가능, 정기 스케줄 없음
 - 로컬 실행 엔트리: [run_collector.bat](run_collector.bat)
 - 실제 Python 경로: `.conda\python.exe`
+- 운영 로그: `logs/collector.log`
+- 상태 확인: `powershell -ExecutionPolicy Bypass -File .\scripts\status.ps1`

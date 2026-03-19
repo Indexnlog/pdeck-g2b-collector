@@ -69,6 +69,7 @@ nohup.out
 # 로컬 progress 백업 파일
 progress.json
 progress_backup.json
+collector.lock
 
 # Claude Code 설정 폴더
 .claude/

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+import json
 import os
 import sys
 import traceback
 import xml.etree.ElementTree as ET
 from datetime import datetime
+import ctypes
 import pytz
 
 # -----------------------------------------------------------
@@ -56,6 +58,64 @@ except ImportError as e:
 # -----------------------------------------------------------
 API_KEY = os.getenv("API_KEY")
 MAX_API_CALLS = 1000
+LOCK_FILE = os.path.join(project_root, "collector.lock")
+
+
+def is_pid_running(pid: int) -> bool:
+    """Windows에서 PID가 살아있는지 확인."""
+    if pid <= 0:
+        return False
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    handle = ctypes.windll.kernel32.OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+    )
+    if not handle:
+        return False
+
+    ctypes.windll.kernel32.CloseHandle(handle)
+    return True
+
+
+def acquire_lock() -> tuple[bool, str | None]:
+    """중복 실행 방지를 위한 락파일 생성."""
+    now = datetime.now().isoformat(timespec="seconds")
+    current = {"pid": os.getpid(), "started_at": now}
+
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+        except Exception:
+            existing = {}
+
+        existing_pid = int(existing.get("pid", 0) or 0)
+        existing_started = existing.get("started_at", "알 수 없음")
+
+        if is_pid_running(existing_pid):
+            return False, (
+                f"이미 수집기가 실행 중입니다. "
+                f"PID={existing_pid}, started_at={existing_started}"
+            )
+
+        # 죽은 프로세스의 락파일은 자동 정리
+        try:
+            os.remove(LOCK_FILE)
+        except OSError:
+            return False, "이전 락파일을 정리하지 못했습니다"
+
+    with open(LOCK_FILE, "w", encoding="utf-8") as f:
+        json.dump(current, f, ensure_ascii=False, indent=2)
+    return True, None
+
+
+def release_lock():
+    """수집 종료 시 락파일 제거."""
+    if os.path.exists(LOCK_FILE):
+        try:
+            os.remove(LOCK_FILE)
+        except OSError:
+            pass
 
 
 # -----------------------------------------------------------
@@ -278,7 +338,7 @@ def main():
                     f"{consecutive_zero_inserts}개 구간 연속 0건 insert.\n"
                     f"현재 위치: {job} {year}년 {month}월\n"
                     f"이미 수집된 구간을 헛돌고 있을 수 있습니다.\n"
-                    f"GitHub Actions > G2B > Reset Progress Position 으로 위치를 재설정하세요."
+                    f"scripts\\reset_progress.ps1 로 로컬 progress 위치를 재설정하세요."
                 )
                 log(warn_msg)
                 send_slack_message(warn_msg)
@@ -368,4 +428,12 @@ API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS} (오늘 누적)
 
 
 if __name__ == "__main__":
-    sys.exit(0 if main() else 1)
+    locked, lock_error = acquire_lock()
+    if not locked:
+        print(f"⛔ {lock_error}")
+        sys.exit(0)
+
+    try:
+        sys.exit(0 if main() else 1)
+    finally:
+        release_lock()
