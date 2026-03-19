@@ -2,7 +2,7 @@ name: G2B Auto Collector
 
 on:
   schedule:
-    - cron: "0 23 * * *"  # UTC 23:00 = KST 08:00 (하루 1회)
+    - cron: "17 23 * * *"  # UTC 23:17 = KST 08:17 (정시 혼잡 회피, 하루 1회)
   workflow_dispatch:
     inputs:
       skip_connection_test:
@@ -63,7 +63,7 @@ jobs:
 
       # 🧪 연결 테스트 (G2B API)
       - name: Connection Tests
-        if: ${{ !inputs.skip_connection_test }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_connection_test }}
         run: |
           echo "🧪 시스템 연결 테스트..."
           python -c "
@@ -86,7 +86,7 @@ jobs:
 
           print('✅ 연결 테스트 완료')
           "
-        continue-on-error: false
+        continue-on-error: true
 
       # 🔄 (선택) API 카운트 강제 리셋
       - name: Force Reset API Count
@@ -138,15 +138,19 @@ jobs:
         id: run_collector
         timeout-minutes: 110
         run: |
+          set -o pipefail
           echo "🚀 G2B 수집 시작..."
           echo "⏰ 시작 시간: $(date '+%Y-%m-%d %H:%M:%S %Z')"
 
           # 표준 출력을 화면과 파일(collection.log)에 동시에 기록
-          if python collectors/g2b/collect_all.py 2>&1 | tee collection.log; then
+          python collectors/g2b/collect_all.py 2>&1 | tee collection.log
+          collector_exit=${PIPESTATUS[0]}
+
+          if [ "$collector_exit" -eq 0 ]; then
             echo "✅ 수집 완료"
             echo "collector_status=success" >> $GITHUB_OUTPUT
           else
-            echo "❌ 수집 실패 또는 타임아웃 (종료 코드: $?)"
+            echo "❌ 수집 실패 또는 타임아웃 (종료 코드: $collector_exit)"
             echo "collector_status=failed" >> $GITHUB_OUTPUT
           fi
 
@@ -155,7 +159,7 @@ jobs:
 
       # 🚨 실패/타임아웃 시 상세 Slack 알림
       - name: Notify Failure
-        if: steps.run_collector.outcome == 'failure'
+        if: always() && steps.run_collector.outputs.collector_status == 'failed'
         run: |
           python -c "
           from utils.slack import send_slack_message
@@ -207,7 +211,7 @@ jobs:
           name: execution-logs
           path: |
             collection.log
-            progress.json
+            progress_backup.json
           retention-days: 5
           # ⚠️ 주의: service_account.json은 절대 올리지 않음!
 
