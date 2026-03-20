@@ -4,7 +4,7 @@
 
 - 자동화 주체는 GitHub Actions가 아니라 로컬 PC
 - GitHub Actions는 수동 실행만 사용
-- 정기 스케줄은 꺼둠
+- 정기 스케줄은 꺼둠 (G2B **일일 API 한도**·중복 실행 이슈는 `TROUBLESHOOTING.md` 429 절)
 - 실행 파일은 `run_collector.bat`
 - 실제 파이썬은 `.conda\python.exe`
 

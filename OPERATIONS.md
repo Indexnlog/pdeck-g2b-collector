@@ -33,9 +33,10 @@
 ### 4. 현재 결론: 로컬 단일 운영
 
 - `2026-03-19` 기준으로 정리 완료.
-- GitHub Actions 정기 `schedule` 제거.
+- GitHub Actions 정기 `schedule` 제거. 워크플로 파일은 남기고 **수동 실행(`workflow_dispatch`)만** 쓴다.
 - 로컬 작업 스케줄러는 `pdeck-g2b-collector` 하나만 남김.
 - 기준 문서는 이 파일과 Obsidian 운영 노트로 통일.
+- **왜 한도 이야기가 나오나:** G2B API는 **일일 호출 한도**가 있어, 예전처럼 GitHub에서 하루 여러 번 크게 돌리거나 로컬·클라우드가 겹치면 429(한도 초과)가 나기 쉽다. 그 증상·원인·당시 대응(`daily_api_calls`를 날짜 기준으로 유지 등)은 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)의 **「G2B API 429 Too Many Requests」** 절에 적어 두었다. 정기 스케줄을 끈 건 **실행 주체를 로컬 하나로 맞추는 정리**이고, 한도는 그 결정과 코드 동작을 이해할 때 같이 보면 된다.
 
 ## 왜 로컬 작업이 2개였나
 
