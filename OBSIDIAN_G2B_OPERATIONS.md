@@ -31,9 +31,9 @@
 
 ## 현재 시작 위치
 
-- `공사 2025년 6월`
-- 누적 `618,516건`
-- 기준 파일: `progress_backup.json`
+- `progress_backup.json` 기준 (저장소에 커밋된 스냅샷과 동기화)
+- 예: `용역 2025년 2월`, 누적 `1,169,696건`, 마지막 실행일 `2026-03-19`
+- 매일 아침 확인: `scripts\status.ps1` → Progress + 로그 tail
 
 ## 로그 위치
 
@@ -54,13 +54,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\reset_progress.ps1 -Job 공사 -Year 2025 -Month 6
 ```
 
+## Slack이 매일 안 올 때
+
+- **GitHub Actions 정기 실행은 없음** → 클라우드에서 매일 돌지 않음 → 그 경로로는 Slack이 안 감
+- **Slack은 `collect_all.py`가 실제로 돌 때만** (시작·완료·한도 소진·에러 등)
+- 메시지가 없으면: PC 꺼짐/절전, 작업 스케줄러 `pdeck-g2b-collector` 비활성·실패, `.env`의 `SLACK_TOKEN`·`SLACK_CHANNEL_ID` 누락, 배치가 시작 전에 죽음 → **`logs\collector.log`와 `status.ps1`로 먼저 확인**
+
 ## 체크 순서
 
 1. `.env` 확인
 2. `.conda\python.exe` 실행 확인
-3. 로그에 `G2B 수집 시작` 확인
-4. progress 로드 확인
-5. API 호출 로그 확인
+3. 작업 스케줄러 `pdeck-g2b-collector` 상태·LastRunTime (`status.ps1`)
+4. 로그에 `G2B 수집 시작` 확인
+5. progress 로드 확인
+6. API 호출 로그 확인
 
 ## 문서 기준
 
