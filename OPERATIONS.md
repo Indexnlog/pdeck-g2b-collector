@@ -10,6 +10,7 @@
 - GitHub Actions 워크플로우는 저장소에 남아 있지만 정기 `schedule` 트리거는 제거했다.
 - GitHub Actions는 필요할 때만 수동 실행한다.
 - 일일 수집은 로컬에서 `run_collector.bat` 또는 같은 명령으로 실행한다.
+- **수집 목표(계약월):** 2026년 3월까지 — 상세·달력과의 관계는 [OPERATIONS_WORKFLOW.md](OPERATIONS_WORKFLOW.md) 「수집 범위 목표」절.
 
 ## 운영 변경 히스토리
 

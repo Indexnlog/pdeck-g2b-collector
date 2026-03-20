@@ -32,7 +32,7 @@ from utils.slack import send_slack_message
 START_YEAR = 2016
 START_MONTH = 2
 END_YEAR = 2026
-END_MONTH = 2  # collect_all.py와 동일하게 전달까지
+END_MONTH = 3  # 운영 목표: 2026-03 계약월까지 (collect_all 상한은 실행 월의 전달까지이므로 4월 이후 실행과 맞춤)
 
 # 종류별 bsns_div_nm 매핑 (DB에 저장된 값 기준)
 JOB_TO_DIV = {
