@@ -6,6 +6,7 @@
 
 운영 문서:
 - [OPERATIONS.md](OPERATIONS.md) - GitHub 저장소 기준 운영 문서
+- [OPERATIONS_WORKFLOW.md](OPERATIONS_WORKFLOW.md) - 매일·수집 완료 후 사람이 할 일 (체크리스트·다이어그램)
 - [OBSIDIAN_G2B_OPERATIONS.md](OBSIDIAN_G2B_OPERATIONS.md) - Obsidian에 옮겨 적기 쉬운 요약 노트
 
 현재 기준 요약:

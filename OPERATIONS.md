@@ -2,6 +2,8 @@
 
 이 문서는 `pdeck-g2b-collector`의 현재 운영 기준 문서다.
 
+**일일 절차·수집 종료 직후 할 일:** [OPERATIONS_WORKFLOW.md](OPERATIONS_WORKFLOW.md)
+
 ## 현재 운영 원칙
 
 - 자동 실행 주체는 GitHub Actions가 아니라 로컬 PC다.
