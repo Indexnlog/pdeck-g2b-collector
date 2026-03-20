@@ -102,6 +102,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\status.ps1
 
 ## 주간·비정기 점검
 
+- **작업 스케줄러 `LastTaskResult`가 0이 아닐 때:** [OPERATIONS.md](OPERATIONS.md) 장애 대응 §6 (예: `3221225786` / 로그에 당일 시작 행 없음).
 - **로컬:** `.\.conda\python.exe monitor_health.py`  
   - Slack으로내려면: `$env:SEND_SLACK_NOTIFICATION="true"` 후 실행 (Windows PowerShell).
 - **GitHub:** `schedule:` 이 다시 생겼는지 워크플로 두 파일만 빠르게 grep.
