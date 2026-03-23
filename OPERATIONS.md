@@ -98,8 +98,8 @@ if not exist logs mkdir logs
 
 ## 오늘 기준 확인된 상태
 
-- 진행 스냅샷은 [progress_backup.json](progress_backup.json)을 본다 (문서에 숫자를 수동으로 적어두면 금방 어긋난다).
-- 저장소에 있는 최근 스냅샷 예: `용역 2025년 2월`, 누적 `1,169,696건`, 마지막 실행일 `2026-03-19`.
+- 진행 스냅샷은 [progress_backup.json](progress_backup.json)과 DB `progress`를 본다 (문서 본문에 월·건수를 적어 두면 금방 어긋난다).
+- 저장소에 올라와 있는 `progress_backup.json`은 **참고용 스냅샷**일 뿐이며, 실제 위치는 실행 후 `status.ps1` 또는 DB로 확인한다.
 - 매일 확인은 `scripts\status.ps1` 한 번이면 스케줄·로그·progress를 같이 본다.
 - 로컬 로그:
   - [collector.log](logs/collector.log)
@@ -118,6 +118,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\status.ps1
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\register_task.ps1
 ```
+
+[register_task.ps1](scripts/register_task.ps1)는 작업에 **프로젝트 루트를 작업 디렉터리**로 넣고, Windows 작업의 **실행 시간 제한을 해제**한다(`ExecutionTimeLimit`을 무제한으로 설정해, 기본값처럼 며칠짜리 장시간 수집이 중간에 잘리는 경우를 줄인다). 재등록 후 `Get-ScheduledTaskInfo`로 `NextRunTime`이 기대와 맞는지 본다.
 
 ### progress 위치 수동 재설정
 

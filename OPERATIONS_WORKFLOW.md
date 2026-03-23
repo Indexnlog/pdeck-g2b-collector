@@ -61,6 +61,7 @@ flowchart TD
 - [ ] `.\.conda\python.exe` 동작
 - [ ] 작업 스케줄러 `pdeck-g2b-collector` **Ready**, `NextRunTime`이 기대와 맞음
 - [ ] 수집기 경로가 [run_collector.bat](run_collector.bat)와 일치
+- [ ] 작업을 새로 잡았다면 [scripts/register_task.ps1](scripts/register_task.ps1)로 **작업 디렉터리·실행 시간 제한 없음**이 들어갔는지 확인(재등록 한 번이면 됨)
 
 빠른 확인:
 

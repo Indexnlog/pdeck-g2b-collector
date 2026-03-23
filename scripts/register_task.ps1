@@ -11,13 +11,15 @@ if (-not (Test-Path $batPath)) {
     throw "run_collector.bat not found: $batPath"
 }
 
-$action = New-ScheduledTaskAction -Execute $batPath
+$action = New-ScheduledTaskAction -Execute $batPath -WorkingDirectory $projectRoot
 $trigger = New-ScheduledTaskTrigger -Daily -At $StartTime
+# ExecutionTimeLimit 0 = 제한 없음 (기본 3일 제한 등으로 장시간 수집이 끊기지 않게)
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
-    -MultipleInstances IgnoreNew
+    -MultipleInstances IgnoreNew `
+    -ExecutionTimeLimit ([TimeSpan]::Zero)
 
 Register-ScheduledTask `
     -TaskName $TaskName `

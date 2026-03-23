@@ -33,16 +33,20 @@
 
 현재는 `pdeck-g2b-collector`만 남음
 
+## 작업 스케줄러 등록 (`register_task.ps1`)
+
+- `2026-03-23` 기준: [register_task.ps1](scripts/register_task.ps1)가 작업 **작업 디렉터리 = 프로젝트 루트**, **실행 시간 제한 없음**을 넣도록 맞춰 둠(장시간 수집이 작업 기본 시간 한도로 끊기지 않게).
+- PC 옮기거나 작업을 다시 만들 때는 `powershell -ExecutionPolicy Bypass -File .\scripts\register_task.ps1` 한 번.
+
 ## 현재 시작 위치
 
-- `progress_backup.json` 기준 (저장소에 커밋된 스냅샷과 동기화)
-- 예: `용역 2025년 2월`, 누적 `1,169,696건`, 마지막 실행일 `2026-03-19`
-- 매일 아침 확인: `scripts\status.ps1` → Progress + 로그 tail
+- **단일 기준:** DB `progress` + 로컬 [progress_backup.json](progress_backup.json) (저장소에 커밋된 JSON은 참고용·쉽게 낡음)
+- 매일 아침: `scripts\status.ps1` → Progress + 로그 tail + 스케줄 `NextRunTime`
 
 ## 로그 위치
 
 - `logs/collector.log`
-- `collector.lock` (실행 중일 때만 존재)
+- `collector.lock` (실행 중일 때만 존재해야 함). PID가 이미 죽었는데 lock만 남은 경우, `collect_all.py`는 다음 실행 시 PID를 보고 **고아 락을 지우고** 진행한다.
 
 ## 실행 명령
 
