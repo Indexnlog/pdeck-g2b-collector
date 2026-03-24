@@ -71,5 +71,5 @@ progress.json
 progress_backup.json
 collector.lock
 
-# Claude Code 설정 폴더
-.claude/
+# Claude Code — commit settings/skills/rules, ignore local overrides
+.claude/settings.local.json
