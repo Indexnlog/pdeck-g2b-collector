@@ -145,17 +145,13 @@ class G2BClient:
                 page_no += 1
                 time.sleep(0.1)
 
-            except APIResponseError as e:
-                log(f"❌ API 에러 (페이지 {page_no}): {e}")
-                raise
-
-            except ParseError as e:
-                log(f"❌ 파싱 에러 (페이지 {page_no}): {e}")
+            except (APIResponseError, ParseError, RateLimitError) as e:
+                log(f"❌ API/파싱 에러 (페이지 {page_no}): {e}")
                 raise
 
             except Exception as e:
-                log(f"⚠️ 페이지 {page_no} 수집 실패: {e}")
-                break
+                log(f"❌ 페이지 {page_no} 수집 실패 (상위로 전파): {e}")
+                raise
 
     def fetch_data(self, job_type, year, month, retries=5):
         """하위 호환용 — 소량 데이터에만 사용. 대량은 fetch_pages() 권장."""
