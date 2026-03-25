@@ -132,6 +132,56 @@ def save_run_history(run_date: str, collected: int, api_calls: int,
             cur.execute(sql, (run_date, collected, api_calls, end_job, end_year, end_month))
 
 
+def find_collection_gaps(start_year: int = 2016, start_month: int = 2) -> list:
+    """
+    DB에 수집된 구간과 있어야 할 전체 구간을 비교해서 누락된 구간을 반환.
+
+    Returns:
+        list of dict: [{"job": "물품", "year": 2025, "month": 6}, ...]
+    """
+    from datetime import datetime
+    import pytz
+
+    jobs = ["물품", "공사", "용역", "외자"]
+
+    # 현재 달의 전달까지가 수집 범위
+    tz = pytz.timezone("Asia/Seoul")
+    now = datetime.now(tz)
+    if now.month == 1:
+        end_year, end_month = now.year - 1, 12
+    else:
+        end_year, end_month = now.year, now.month - 1
+
+    # DB에서 실제 수집된 (job, year, month) 조합 조회
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT bsns_div_nm, collected_year, collected_month, COUNT(*) as cnt
+                FROM contracts
+                GROUP BY bsns_div_nm, collected_year, collected_month
+            """)
+            collected = set()
+            for row in cur.fetchall():
+                job_name, yr, mo, cnt = row
+                if cnt > 0:
+                    collected.add((job_name, yr, mo))
+
+    # 전체 기대 구간 생성
+    gaps = []
+    for job in jobs:
+        yr, mo = start_year, start_month
+        while yr < end_year or (yr == end_year and mo <= end_month):
+            if (job, yr, mo) not in collected:
+                gaps.append({"job": job, "year": yr, "month": mo})
+            if mo < 12:
+                mo += 1
+            else:
+                yr += 1
+                mo = 1
+
+    return gaps
+
+
 def insert_contracts(rows: list) -> int:
     """
     계약 데이터 배치 insert.

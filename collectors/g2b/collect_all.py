@@ -34,7 +34,7 @@ print(f"📂 루트 내용물: {os.listdir(project_root)}")
 # imports
 # -----------------------------------------------------------
 try:
-    from utils.db import create_table, insert_contracts, load_progress, save_progress, save_run_history
+    from utils.db import create_table, insert_contracts, load_progress, save_progress, save_run_history, find_collection_gaps
     from utils.g2b_client import G2BClient
     from utils.logger import log
     from utils.slack import send_slack_message
@@ -275,6 +275,13 @@ def main():
             log(f"📊 API 사용량: {progress['daily_api_calls']}/{MAX_API_CALLS}")
             log(f"{'='*60}")
 
+            # 수집 종료 조건: 전달까지만 (루프 상단에서 체크)
+            if year > limit_year or (year == limit_year and month > limit_month):
+                log(f"📅 {limit_year}년 {limit_month}월까지 모든 데이터 수집 완료")
+                break
+
+            period_success = False  # 이 구간 수집 성공 여부
+
             try:
                 # 페이지 단위로 수집 + 즉시 DB insert (메모리 절약)
                 month_total = 0
@@ -302,6 +309,8 @@ def main():
                 else:
                     log(f"ℹ️ {job} {year}년 {month}월 - 데이터 없음")
 
+                period_success = True  # 에러 없이 수집 완료
+
             except RateLimitError as e:
                 log(f"⚠️ API 한도 도달: {e}")
                 errors.append(f"API 한도 도달: {job} {year}-{month}")
@@ -310,20 +319,25 @@ def main():
             except APIException as e:
                 log(f"⚠️ API 에러 ({job} {year}-{month}): {e}")
                 errors.append(f"API 에러: {job} {year}-{month} - {e}")
+                # progress 전진하지 않고 중단 — 다음 실행에서 같은 구간 재시도
+                break
 
             except Exception as e:
                 err_detail = f"{type(e).__name__}: {e}" if str(e) else f"{type(e).__name__} (메시지 없음)"
                 log(f"❌ 예상치 못한 에러 ({job} {year}-{month}): {err_detail}")
                 log(f"   traceback: {traceback.format_exc()}")
                 errors.append(f"예상치 못한 에러: {job} {year}-{month} - {err_detail}")
+                # progress 전진하지 않고 중단 — 다음 실행에서 같은 구간 재시도
+                break
 
-            # 다음 구간으로 이동
-            next_job, next_year, next_month = get_next_period(job, year, month)
-            progress.update({
-                "current_job": next_job,
-                "current_year": next_year,
-                "current_month": next_month,
-            })
+            # 성공한 경우에만 다음 구간으로 이동
+            if period_success:
+                next_job, next_year, next_month = get_next_period(job, year, month)
+                progress.update({
+                    "current_job": next_job,
+                    "current_year": next_year,
+                    "current_month": next_month,
+                })
 
             # 타임아웃 대비: 매 구간마다 DB에 progress 저장
             try:
@@ -343,11 +357,6 @@ def main():
                 log(warn_msg)
                 send_slack_message(warn_msg)
                 errors.append("progress 위치 이상 - 수집 중단")
-                break
-
-            # 수집 종료 조건: 전달까지만
-            if next_year > limit_year or (next_year == limit_year and next_month > limit_month):
-                log(f"📅 {limit_year}년 {limit_month}월까지 모든 데이터 수집 완료")
                 break
 
         # 8. 진행 상황 저장 (DB)
@@ -374,7 +383,26 @@ def main():
         except Exception as e:
             log(f"⚠️ 실행 이력 저장 실패: {e}")
 
-        # 10. 결과 알림
+        # 10. 누락 구간 감지
+        gap_summary = ""
+        try:
+            gaps = find_collection_gaps()
+            if gaps:
+                gap_count = len(gaps)
+                # job별 갯수 요약
+                from collections import Counter
+                job_counts = Counter(g["job"] for g in gaps)
+                job_detail = ", ".join(f"{j} {c}개" for j, c in job_counts.items())
+                gap_summary = f"\n\n🔍 누락 구간 {gap_count}개 감지: {job_detail}"
+                gap_summary += f"\n   첫 누락: {gaps[0]['job']} {gaps[0]['year']}-{gaps[0]['month']:02d}"
+                gap_summary += f"\n   💡 scripts\\find_gaps.py --backfill 로 재수집 가능"
+                log(f"🔍 누락 구간 {gap_count}개 감지됨")
+            else:
+                log("✅ 누락 구간 없음")
+        except Exception as e:
+            log(f"⚠️ 누락 구간 감지 실패 (치명적이지 않음): {e}")
+
+        # 11. 결과 알림
         status_emoji = "🎯" if not errors else "⚠️"
         error_summary = ""
         if errors:
@@ -386,7 +414,7 @@ def main():
 오늘 수집: {total_new:,}건 → CockroachDB insert
 API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS} (오늘 누적)
 처리 구간: {len(saved)}개
-총 누적: {progress.get('total_collected', 0):,}건{error_summary}
+총 누적: {progress.get('total_collected', 0):,}건{error_summary}{gap_summary}
 """
         send_slack_message(message)
         log("🎉 작업 완료")
