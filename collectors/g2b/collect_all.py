@@ -275,6 +275,13 @@ def main():
             log(f"📊 API 사용량: {progress['daily_api_calls']}/{MAX_API_CALLS}")
             log(f"{'='*60}")
 
+            # 수집 종료 조건: 전달까지만 (루프 상단에서 체크)
+            if year > limit_year or (year == limit_year and month > limit_month):
+                log(f"📅 {limit_year}년 {limit_month}월까지 모든 데이터 수집 완료")
+                break
+
+            period_success = False  # 이 구간 수집 성공 여부
+
             try:
                 # 페이지 단위로 수집 + 즉시 DB insert (메모리 절약)
                 month_total = 0
@@ -302,6 +309,8 @@ def main():
                 else:
                     log(f"ℹ️ {job} {year}년 {month}월 - 데이터 없음")
 
+                period_success = True  # 에러 없이 수집 완료
+
             except RateLimitError as e:
                 log(f"⚠️ API 한도 도달: {e}")
                 errors.append(f"API 한도 도달: {job} {year}-{month}")
@@ -310,20 +319,25 @@ def main():
             except APIException as e:
                 log(f"⚠️ API 에러 ({job} {year}-{month}): {e}")
                 errors.append(f"API 에러: {job} {year}-{month} - {e}")
+                # progress 전진하지 않고 중단 — 다음 실행에서 같은 구간 재시도
+                break
 
             except Exception as e:
                 err_detail = f"{type(e).__name__}: {e}" if str(e) else f"{type(e).__name__} (메시지 없음)"
                 log(f"❌ 예상치 못한 에러 ({job} {year}-{month}): {err_detail}")
                 log(f"   traceback: {traceback.format_exc()}")
                 errors.append(f"예상치 못한 에러: {job} {year}-{month} - {err_detail}")
+                # progress 전진하지 않고 중단 — 다음 실행에서 같은 구간 재시도
+                break
 
-            # 다음 구간으로 이동
-            next_job, next_year, next_month = get_next_period(job, year, month)
-            progress.update({
-                "current_job": next_job,
-                "current_year": next_year,
-                "current_month": next_month,
-            })
+            # 성공한 경우에만 다음 구간으로 이동
+            if period_success:
+                next_job, next_year, next_month = get_next_period(job, year, month)
+                progress.update({
+                    "current_job": next_job,
+                    "current_year": next_year,
+                    "current_month": next_month,
+                })
 
             # 타임아웃 대비: 매 구간마다 DB에 progress 저장
             try:
@@ -343,11 +357,6 @@ def main():
                 log(warn_msg)
                 send_slack_message(warn_msg)
                 errors.append("progress 위치 이상 - 수집 중단")
-                break
-
-            # 수집 종료 조건: 전달까지만
-            if next_year > limit_year or (next_year == limit_year and next_month > limit_month):
-                log(f"📅 {limit_year}년 {limit_month}월까지 모든 데이터 수집 완료")
                 break
 
         # 8. 진행 상황 저장 (DB)
