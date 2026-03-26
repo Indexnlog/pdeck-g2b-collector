@@ -110,6 +110,8 @@ def fill_gaps():
         f"대상: {len(gaps)}개 월 × 4종 = 최대 {len(gaps) * 4}개 구간"
     )
 
+    from collectors.g2b.collect_all import parse_xml_elements
+
     for year, month in gaps:
         for job in jobs:
             if api_calls >= MAX_API_CALLS:
@@ -118,20 +120,22 @@ def fill_gaps():
 
             try:
                 log(f"📡 재수집: {job} {year}년 {month}월")
-                xml, count, used = client.fetch_data(job, year, month)
-                api_calls += used
+                month_inserted = 0
 
-                if count > 0:
-                    # collect_all.py와 동일한 파싱 로직
-                    from collectors.g2b.collect_all import parse_items_to_rows
-                    rows = parse_items_to_rows(xml, year, month)
+                # fetch_pages()로 페이지 단위 수집 + 즉시 DB insert (메모리 효율적)
+                for xml_items, page_calls in client.fetch_pages(job, year, month):
+                    api_calls += page_calls
+                    rows = parse_xml_elements(xml_items, year, month)
                     inserted = insert_contracts(rows)
-                    total_inserted += inserted
-                    if inserted > 0:
-                        filled.append(f"{job} {year}-{month:02d} ({inserted}건)")
-                        log(f"✅ {job} {year}-{month:02d}: {inserted}건 insert")
-                    else:
-                        log(f"ℹ️ {job} {year}-{month:02d}: 이미 있음 (0건 신규)")
+                    month_inserted += inserted
+                    del rows  # 즉시 메모리 해제
+
+                if month_inserted > 0:
+                    filled.append(f"{job} {year}-{month:02d} ({month_inserted}건)")
+                    total_inserted += month_inserted
+                    log(f"✅ {job} {year}-{month:02d}: {month_inserted}건 insert")
+                else:
+                    log(f"ℹ️ {job} {year}-{month:02d}: 데이터 없음 또는 이미 수집됨")
 
             except Exception as e:
                 err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
