@@ -1,0 +1,37 @@
+=== PROGRESS ===
+  id: 1
+  current_job: 물품
+  current_year: 2026
+  current_month: 3
+  daily_api_calls: 118
+  total_collected: 1712567
+  last_run_date: 2026-03-25
+
+=== RUN HISTORY (last 5) ===
+{'id': 1161060152132763649, 'run_date': '2026-03-25', 'collected': 48999, 'api_calls': 118, 'end_job': '물품', 'end_year': 2026, 'end_month': 3, 'created_at': datetime.datetime(2026, 3, 25, 0, 17, 18, 900909)}
+{'id': 1160542093508018177, 'run_date': '2026-03-23', 'collected': 491749, 'api_calls': 1000, 'end_job': '외자', 'end_year': 2025, 'end_month': 6, 'created_at': datetime.datetime(2026, 3, 23, 4, 22, 19, 960754)}
+{'id': 1159420036229169153, 'run_date': '2026-03-19', 'collected': 551180, 'api_calls': 1107, 'end_job': '용역', 'end_year': 2025, 'end_month': 2, 'created_at': datetime.datetime(2026, 3, 19, 5, 15, 15, 250053)}
+{'id': 1159115981670645761, 'run_date': '2026-03-18', 'collected': 512221, 'api_calls': 1057, 'end_job': '공사', 'end_year': 2025, 'end_month': 6, 'created_at': datetime.datetime(2026, 3, 18, 3, 28, 45, 167045)}
+{'id': 1158909978715717633, 'run_date': '2026-03-16', 'collected': 83408, 'api_calls': 1017, 'end_job': '물품', 'end_year': 2025, 'end_month': 6, 'created_at': datetime.datetime(2026, 3, 17, 10, 0, 58, 41582)}
+
+=== GAPS (year/month with 0 records) ===
+Total gaps: 12
+  2020-12
+  2023-04
+  2023-06
+  2023-07
+  2023-08
+  2023-09
+  2023-10
+  2023-11
+  2024-09
+  2024-10
+  2024-11
+  2024-12
+
+=== COVERAGE SUMMARY ===
+  공사: 2016-01 ~ 2025-12 (4,188,347건)
+  기술용역: 2016-01 ~ 2025-07 (4,058,188건)
+  물품: 2016-02 ~ 2026-02 (2,955,245건)
+  외자: 2025-01 ~ 2025-12 (3,667건)
+  일반용역: 2016-01 ~ 2025-07 (114,453건)
