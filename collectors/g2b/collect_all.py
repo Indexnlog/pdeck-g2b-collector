@@ -34,7 +34,7 @@ print(f"📂 루트 내용물: {os.listdir(project_root)}")
 # imports
 # -----------------------------------------------------------
 try:
-    from utils.db import create_table, insert_contracts, load_progress, save_progress, save_run_history
+    from utils.db import create_table, insert_contracts, load_progress, save_progress, save_run_history, find_collection_gaps
     from utils.g2b_client import G2BClient
     from utils.logger import log
     from utils.slack import send_slack_message
@@ -383,7 +383,26 @@ def main():
         except Exception as e:
             log(f"⚠️ 실행 이력 저장 실패: {e}")
 
-        # 10. 결과 알림
+        # 10. 누락 구간 감지
+        gap_summary = ""
+        try:
+            gaps = find_collection_gaps()
+            if gaps:
+                gap_count = len(gaps)
+                # job별 갯수 요약
+                from collections import Counter
+                job_counts = Counter(g["job"] for g in gaps)
+                job_detail = ", ".join(f"{j} {c}개" for j, c in job_counts.items())
+                gap_summary = f"\n\n🔍 누락 구간 {gap_count}개 감지: {job_detail}"
+                gap_summary += f"\n   첫 누락: {gaps[0]['job']} {gaps[0]['year']}-{gaps[0]['month']:02d}"
+                gap_summary += f"\n   💡 scripts\\find_gaps.py --backfill 로 재수집 가능"
+                log(f"🔍 누락 구간 {gap_count}개 감지됨")
+            else:
+                log("✅ 누락 구간 없음")
+        except Exception as e:
+            log(f"⚠️ 누락 구간 감지 실패 (치명적이지 않음): {e}")
+
+        # 11. 결과 알림
         status_emoji = "🎯" if not errors else "⚠️"
         error_summary = ""
         if errors:
@@ -395,7 +414,7 @@ def main():
 오늘 수집: {total_new:,}건 → CockroachDB insert
 API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS} (오늘 누적)
 처리 구간: {len(saved)}개
-총 누적: {progress.get('total_collected', 0):,}건{error_summary}
+총 누적: {progress.get('total_collected', 0):,}건{error_summary}{gap_summary}
 """
         send_slack_message(message)
         log("🎉 작업 완료")
