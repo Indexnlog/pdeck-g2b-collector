@@ -1,6 +1,14 @@
+import io
 import os
 import sys
 from datetime import datetime
+
+# Windows cp949 stdout에서 이모지 깨짐 방지
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # 프로젝트 루트 기준 로그 파일 경로
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
