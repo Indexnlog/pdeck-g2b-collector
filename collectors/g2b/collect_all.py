@@ -411,7 +411,7 @@ def main():
                 error_summary += f"\n  • ... 외 {len(errors) - 5}개"
 
         message = f"""{status_emoji} G2B 수집 완료
-오늘 수집: {total_new:,}건 → CockroachDB insert
+오늘 수집: {total_new:,}건 → SQLite insert
 API 호출: {progress['daily_api_calls']}/{MAX_API_CALLS} (오늘 누적)
 처리 구간: {len(saved)}개
 총 누적: {progress.get('total_collected', 0):,}건{error_summary}{gap_summary}

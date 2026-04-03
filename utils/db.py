@@ -1,85 +1,94 @@
 import os
-import psycopg2
-from psycopg2.extras import execute_values
+import sqlite3
 from utils.logger import log
+
+# 외장하드 SQLite DB 경로 (D:\pdeck-data\g2b-collector\g2b.db)
+DB_PATH = os.environ.get(
+    "G2B_DB_PATH",
+    "D:/pdeck-data/g2b-collector/g2b.db"
+)
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS contracts (
-    unty_cntrct_no               VARCHAR(50)  PRIMARY KEY,
-    bsns_div_nm                  VARCHAR(100),
+    unty_cntrct_no               TEXT PRIMARY KEY,
+    bsns_div_nm                  TEXT,
     cntrct_nm                    TEXT,
-    cntrct_cncls_date            DATE,
+    cntrct_cncls_date            TEXT,
     cntrct_prd                   TEXT,
-    tot_cntrct_amt               BIGINT,
-    thtm_cntrct_amt              BIGINT,
-    cntrct_instt_cd              VARCHAR(50),
-    cntrct_instt_nm              VARCHAR(500),
-    cntrct_instt_jrsdctn_div_nm  VARCHAR(200),
-    cntrct_cncls_mthd_nm         VARCHAR(200),
-    pay_div_nm                   VARCHAR(200),
-    ntce_no                      VARCHAR(100),
+    tot_cntrct_amt               INTEGER,
+    thtm_cntrct_amt              INTEGER,
+    cntrct_instt_cd              TEXT,
+    cntrct_instt_nm              TEXT,
+    cntrct_instt_jrsdctn_div_nm  TEXT,
+    cntrct_cncls_mthd_nm         TEXT,
+    pay_div_nm                   TEXT,
+    ntce_no                      TEXT,
     corp_list                    TEXT,
-    lngtrm_ctnu_div_nm           VARCHAR(100),
-    cmmn_cntrct_yn               CHAR(1),
-    rgst_dt                      TIMESTAMP,
-    collected_year               SMALLINT,
-    collected_month              SMALLINT
+    lngtrm_ctnu_div_nm           TEXT,
+    cmmn_cntrct_yn               TEXT,
+    rgst_dt                      TEXT,
+    collected_year               INTEGER,
+    collected_month              INTEGER
 );
 """
 
 CREATE_PROGRESS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS progress (
-    id              INT         PRIMARY KEY DEFAULT 1,
-    current_job     VARCHAR(20) NOT NULL DEFAULT '물품',
-    current_year    SMALLINT    NOT NULL DEFAULT 2016,
-    current_month   SMALLINT    NOT NULL DEFAULT 2,
-    daily_api_calls INT         NOT NULL DEFAULT 0,
-    total_collected BIGINT      NOT NULL DEFAULT 0,
-    last_run_date   VARCHAR(10) NOT NULL DEFAULT ''
+    id              INTEGER PRIMARY KEY DEFAULT 1,
+    current_job     TEXT NOT NULL DEFAULT '물품',
+    current_year    INTEGER NOT NULL DEFAULT 2016,
+    current_month   INTEGER NOT NULL DEFAULT 2,
+    daily_api_calls INTEGER NOT NULL DEFAULT 0,
+    total_collected INTEGER NOT NULL DEFAULT 0,
+    last_run_date   TEXT NOT NULL DEFAULT ''
 );
 """
 
 CREATE_RUN_HISTORY_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS run_history (
-    id              SERIAL      PRIMARY KEY,
-    run_date        VARCHAR(10) NOT NULL,
-    collected       INT         NOT NULL DEFAULT 0,
-    api_calls       INT         NOT NULL DEFAULT 0,
-    end_job         VARCHAR(20),
-    end_year        SMALLINT,
-    end_month       SMALLINT,
-    created_at      TIMESTAMP   DEFAULT now()
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date        TEXT NOT NULL,
+    collected       INTEGER NOT NULL DEFAULT 0,
+    api_calls       INTEGER NOT NULL DEFAULT 0,
+    end_job         TEXT,
+    end_year        INTEGER,
+    end_month       INTEGER,
+    created_at      TEXT DEFAULT (datetime('now'))
 );
 """
 
 
 def get_connection():
-    url = os.environ.get("DATABASE_URL", "").strip()
-    if not url:
-        raise EnvironmentError("DATABASE_URL 환경변수가 설정되지 않았습니다")
-    return psycopg2.connect(url)
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
 
 
 def create_table():
     """최초 실행 시 테이블 생성 (이미 있으면 무시)"""
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(CREATE_TABLE_SQL)
-            cur.execute(CREATE_PROGRESS_TABLE_SQL)
-            cur.execute(CREATE_RUN_HISTORY_TABLE_SQL)
+    conn = get_connection()
+    conn.execute(CREATE_TABLE_SQL)
+    conn.execute(CREATE_PROGRESS_TABLE_SQL)
+    conn.execute(CREATE_RUN_HISTORY_TABLE_SQL)
+    conn.commit()
+    conn.close()
     log("✅ contracts / progress / run_history 테이블 준비 완료")
 
 
 def load_progress() -> dict:
     """progress 테이블에서 진행 상태 로드. 없으면 기본값 반환."""
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT current_job, current_year, current_month, "
-                "daily_api_calls, total_collected, last_run_date "
-                "FROM progress WHERE id = 1"
-            )
-            row = cur.fetchone()
+    conn = get_connection()
+    cur = conn.execute(
+        "SELECT current_job, current_year, current_month, "
+        "daily_api_calls, total_collected, last_run_date "
+        "FROM progress WHERE id = 1"
+    )
+    row = cur.fetchone()
+    conn.close()
     if row:
         return {
             "current_job":     row[0],
@@ -105,19 +114,20 @@ def save_progress(progress: dict) -> None:
         INSERT INTO progress
             (id, current_job, current_year, current_month,
              daily_api_calls, total_collected, last_run_date)
-        VALUES (1, %(current_job)s, %(current_year)s, %(current_month)s,
-                %(daily_api_calls)s, %(total_collected)s, %(last_run_date)s)
+        VALUES (1, :current_job, :current_year, :current_month,
+                :daily_api_calls, :total_collected, :last_run_date)
         ON CONFLICT (id) DO UPDATE SET
-            current_job     = EXCLUDED.current_job,
-            current_year    = EXCLUDED.current_year,
-            current_month   = EXCLUDED.current_month,
-            daily_api_calls = EXCLUDED.daily_api_calls,
-            total_collected = EXCLUDED.total_collected,
-            last_run_date   = EXCLUDED.last_run_date
+            current_job     = excluded.current_job,
+            current_year    = excluded.current_year,
+            current_month   = excluded.current_month,
+            daily_api_calls = excluded.daily_api_calls,
+            total_collected = excluded.total_collected,
+            last_run_date   = excluded.last_run_date
     """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, progress)
+    conn = get_connection()
+    conn.execute(sql, progress)
+    conn.commit()
+    conn.close()
 
 
 def save_run_history(run_date: str, collected: int, api_calls: int,
@@ -125,11 +135,12 @@ def save_run_history(run_date: str, collected: int, api_calls: int,
     """실행 결과를 run_history 테이블에 기록."""
     sql = """
         INSERT INTO run_history (run_date, collected, api_calls, end_job, end_year, end_month)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES (?, ?, ?, ?, ?, ?)
     """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (run_date, collected, api_calls, end_job, end_year, end_month))
+    conn = get_connection()
+    conn.execute(sql, (run_date, collected, api_calls, end_job, end_year, end_month))
+    conn.commit()
+    conn.close()
 
 
 def find_collection_gaps(start_year: int = 2016, start_month: int = 2) -> list:
@@ -153,18 +164,18 @@ def find_collection_gaps(start_year: int = 2016, start_month: int = 2) -> list:
         end_year, end_month = now.year, now.month - 1
 
     # DB에서 실제 수집된 (job, year, month) 조합 조회
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT bsns_div_nm, collected_year, collected_month, COUNT(*) as cnt
-                FROM contracts
-                GROUP BY bsns_div_nm, collected_year, collected_month
-            """)
-            collected = set()
-            for row in cur.fetchall():
-                job_name, yr, mo, cnt = row
-                if cnt > 0:
-                    collected.add((job_name, yr, mo))
+    conn = get_connection()
+    cur = conn.execute("""
+        SELECT bsns_div_nm, collected_year, collected_month, COUNT(*) as cnt
+        FROM contracts
+        GROUP BY bsns_div_nm, collected_year, collected_month
+    """)
+    collected = set()
+    for row in cur.fetchall():
+        job_name, yr, mo, cnt = row
+        if cnt > 0:
+            collected.add((job_name, yr, mo))
+    conn.close()
 
     # 전체 기대 구간 생성
     gaps = []
@@ -185,28 +196,23 @@ def find_collection_gaps(start_year: int = 2016, start_month: int = 2) -> list:
 def insert_contracts(rows: list) -> int:
     """
     계약 데이터 배치 insert.
-    중복(unty_cntrct_no)은 ON CONFLICT DO NOTHING으로 건너뜀.
-    대량 데이터(6만 건+)도 5000건씩 나눠서 안정적으로 처리.
+    중복(unty_cntrct_no)은 INSERT OR IGNORE로 건너뜀.
     """
     if not rows:
         return 0
 
-    BATCH_SIZE = 5000  # CockroachDB 트랜잭션 크기 제한 대응
     cols = list(rows[0].keys())
+    placeholders = ', '.join(['?'] * len(cols))
     sql = f"""
-        INSERT INTO contracts ({', '.join(cols)})
-        VALUES %s
-        ON CONFLICT (unty_cntrct_no) DO NOTHING
+        INSERT OR IGNORE INTO contracts ({', '.join(cols)})
+        VALUES ({placeholders})
     """
 
-    total_inserted = 0
-    for i in range(0, len(rows), BATCH_SIZE):
-        batch = rows[i:i + BATCH_SIZE]
-        values = [[r[c] for c in cols] for r in batch]
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                execute_values(cur, sql, values, page_size=500)
-                inserted = cur.rowcount if cur.rowcount >= 0 else len(values)
-                total_inserted += inserted
+    values = [[r[c] for c in cols] for r in rows]
+    conn = get_connection()
+    cur = conn.executemany(sql, values)
+    inserted = cur.rowcount if cur.rowcount >= 0 else len(values)
+    conn.commit()
+    conn.close()
 
-    return total_inserted
+    return inserted
