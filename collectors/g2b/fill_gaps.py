@@ -89,15 +89,20 @@ def fill_gaps():
                 log(f"ℹ️ {job} {year}-{month:02d}: 데이터 없음 또는 이미 수집됨")
 
         except Exception as e:
-            err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
-            log(f"❌ {job} {year}-{month:02d} 실패: {err}")
-            errors.append(f"{job} {year}-{month:02d}: {err}")
+            err_type = type(e).__name__
+            log(f"❌ {job} {year}-{month:02d} 실패: {err_type}: {e}")
+            errors.append({"period": f"{job} {year}-{month:02d}", "type": err_type})
 
     # 결과 알림
     status = "🎯" if not errors else "⚠️"
     error_summary = ""
     if errors:
-        error_summary = f"\n\n❌ 에러 ({len(errors)}개):\n" + "\n".join(f"  • {e}" for e in errors[:5])
+        # Slack에는 구간 + 에러 종류만 (상세 URL 제외)
+        from collections import Counter
+        err_by_type = Counter(e["type"] for e in errors)
+        err_periods = [e["period"] for e in errors]
+        type_summary = ", ".join(f"{t} {c}건" for t, c in err_by_type.items())
+        error_summary = f"\n\n❌ 에러 ({len(errors)}개, {type_summary}):\n" + "\n".join(f"  • {p}" for p in err_periods[:10])
 
     msg = f"""{status} 누락 구간 재수집 완료
 채운 구간: {len(filled)}개
