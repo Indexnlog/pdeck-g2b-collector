@@ -22,7 +22,7 @@ try:
 except ImportError:
     pass
 
-from utils.db import find_collection_gaps, insert_contracts
+from utils.db import find_collection_gaps, insert_contracts, mark_period_collected
 from utils.g2b_client import G2BClient
 from utils.logger import log
 from utils.slack import send_slack_message
@@ -77,6 +77,9 @@ def fill_gaps():
                 inserted = insert_contracts(rows)
                 month_inserted += inserted
                 del rows
+
+            # 성공적으로 fetch 완료 → 수집 완료로 기록 (0건이어도)
+            mark_period_collected(job, year, month)
 
             if month_inserted > 0:
                 filled.append(f"{job} {year}-{month:02d} ({month_inserted}건)")

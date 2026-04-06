@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS run_history (
 );
 """
 
+CREATE_COLLECTED_PERIODS_SQL = """
+CREATE TABLE IF NOT EXISTS collected_periods (
+    job         TEXT NOT NULL,
+    year        INTEGER NOT NULL,
+    month       INTEGER NOT NULL,
+    collected_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (job, year, month)
+);
+"""
+
 
 def get_connection():
     db_dir = os.path.dirname(DB_PATH)
@@ -74,9 +84,10 @@ def create_table():
     conn.execute(CREATE_TABLE_SQL)
     conn.execute(CREATE_PROGRESS_TABLE_SQL)
     conn.execute(CREATE_RUN_HISTORY_TABLE_SQL)
+    conn.execute(CREATE_COLLECTED_PERIODS_SQL)
     conn.commit()
     conn.close()
-    log("✅ contracts / progress / run_history 테이블 준비 완료")
+    log("✅ contracts / progress / run_history / collected_periods 테이블 준비 완료")
 
 
 def load_progress() -> dict:
@@ -143,9 +154,65 @@ def save_run_history(run_date: str, collected: int, api_calls: int,
     conn.close()
 
 
+def mark_period_collected(job: str, year: int, month: int) -> None:
+    """수집 완료된 (job, year, month) 구간을 기록."""
+    conn = get_connection()
+    conn.execute("""
+        INSERT OR IGNORE INTO collected_periods (job, year, month)
+        VALUES (?, ?, ?)
+    """, (job, year, month))
+    conn.commit()
+    conn.close()
+
+
+# bsns_div_nm → API job 타입 매핑 (gap 탐지에서 사용)
+BSNS_TO_JOB = {
+    "물품": "물품",
+    "공사": "공사",
+    "용역": "용역",
+    "기술용역": "용역",
+    "일반용역": "용역",
+    "외자": "외자",
+    "외자물품": "외자",
+}
+
+
+def _backfill_collected_periods(conn) -> None:
+    """
+    최초 1회: contracts 테이블에서 collected_periods를 역산해 채움.
+    bsns_div_nm → job 타입으로 매핑하여 실제 수집된 구간을 복원.
+    """
+    cur = conn.execute("""
+        SELECT DISTINCT bsns_div_nm, collected_year, collected_month
+        FROM contracts
+        WHERE collected_year IS NOT NULL AND collected_month IS NOT NULL
+    """)
+
+    periods = set()
+    unmapped = set()
+    for bsns, yr, mo in cur.fetchall():
+        job = BSNS_TO_JOB.get(bsns)
+        if job:
+            periods.add((job, yr, mo))
+        elif bsns:
+            unmapped.add(bsns)
+
+    for job, yr, mo in periods:
+        conn.execute("""
+            INSERT OR IGNORE INTO collected_periods (job, year, month)
+            VALUES (?, ?, ?)
+        """, (job, yr, mo))
+    conn.commit()
+
+    log(f"📦 collected_periods 초기 backfill: {len(periods)}건 등록")
+    if unmapped:
+        log(f"⚠️ 매핑 안 된 bsns_div_nm: {unmapped} → BSNS_TO_JOB에 추가 필요")
+
+
 def find_collection_gaps(start_year: int = 2016, start_month: int = 2) -> list:
     """
-    DB에 수집된 구간과 있어야 할 전체 구간을 비교해서 누락된 구간을 반환.
+    collected_periods 테이블 기반으로 누락된 구간을 반환.
+    최초 실행 시 contracts 테이블에서 자동 backfill.
 
     Returns:
         list of dict: [{"job": "물품", "year": 2025, "month": 6}, ...]
@@ -163,18 +230,20 @@ def find_collection_gaps(start_year: int = 2016, start_month: int = 2) -> list:
     else:
         end_year, end_month = now.year, now.month - 1
 
-    # DB에서 실제 수집된 (job, year, month) 조합 조회
     conn = get_connection()
-    cur = conn.execute("""
-        SELECT bsns_div_nm, collected_year, collected_month, COUNT(*) as cnt
-        FROM contracts
-        GROUP BY bsns_div_nm, collected_year, collected_month
-    """)
-    collected = set()
-    for row in cur.fetchall():
-        job_name, yr, mo, cnt = row
-        if cnt > 0:
-            collected.add((job_name, yr, mo))
+
+    # collected_periods 테이블 생성 (아직 없을 수 있음)
+    conn.execute(CREATE_COLLECTED_PERIODS_SQL)
+    conn.commit()
+
+    # 최초 실행: collected_periods가 비어있으면 contracts에서 backfill
+    count = conn.execute("SELECT COUNT(*) FROM collected_periods").fetchone()[0]
+    if count == 0:
+        _backfill_collected_periods(conn)
+
+    # collected_periods에서 수집 완료된 구간 조회
+    cur = conn.execute("SELECT job, year, month FROM collected_periods")
+    collected = set((row[0], row[1], row[2]) for row in cur.fetchall())
     conn.close()
 
     # 전체 기대 구간 생성

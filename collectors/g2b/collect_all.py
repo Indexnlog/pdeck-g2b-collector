@@ -34,7 +34,7 @@ print(f"📂 루트 내용물: {os.listdir(project_root)}")
 # imports
 # -----------------------------------------------------------
 try:
-    from utils.db import create_table, insert_contracts, load_progress, save_progress, save_run_history, find_collection_gaps
+    from utils.db import create_table, insert_contracts, load_progress, save_progress, save_run_history, find_collection_gaps, mark_period_collected
     from utils.g2b_client import G2BClient
     from utils.logger import log
     from utils.slack import send_slack_message
@@ -310,6 +310,7 @@ def main():
                     log(f"ℹ️ {job} {year}년 {month}월 - 데이터 없음")
 
                 period_success = True  # 에러 없이 수집 완료
+                mark_period_collected(job, year, month)
 
             except RateLimitError as e:
                 log(f"⚠️ API 한도 도달: {e}")
