@@ -1,10 +1,18 @@
 import os
 import json
+import re
 from datetime import datetime
 from typing import Optional, Dict, Any
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from utils.logger import log
+
+_SENSITIVE_PATTERN = re.compile(r'serviceKey=[^&\s)]+')
+
+
+def _mask(text: str) -> str:
+    """민감 정보(serviceKey 등)를 마스킹."""
+    return _SENSITIVE_PATTERN.sub('serviceKey=***', text)
 
 SLACK_TOKEN = os.getenv("SLACK_TOKEN")
 SLACK_CHANNEL_ID = os.getenv("SLACK_CHANNEL_ID")
@@ -98,7 +106,9 @@ class SlackNotifier:
                 text = text[:39950] + "\n... (메시지가 잘렸습니다)"
                 log("⚠ 메시지가 40,000자를 초과하여 잘렸습니다")
             
-            # 메시지 전송
+            # 민감 정보 마스킹 후 전송
+            text = _mask(text)
+
             response = self.client.chat_postMessage(
                 channel=self.channel_id,
                 text=text,

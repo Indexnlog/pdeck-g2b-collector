@@ -1,5 +1,6 @@
 import io
 import os
+import re
 import sys
 from datetime import datetime
 
@@ -24,10 +25,18 @@ except Exception:
     pass
 
 
+_SENSITIVE_PATTERN = re.compile(r'serviceKey=[^&\s)]+')
+
+
+def _mask(text: str) -> str:
+    """민감 정보(serviceKey 등)를 마스킹."""
+    return _SENSITIVE_PATTERN.sub('serviceKey=***', text)
+
+
 def log(message: str):
     """통일된 로그 포맷 — stdout + 파일 동시 기록"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{timestamp}] {message}"
+    line = f"[{timestamp}] {_mask(message)}"
     print(line)
     if _file_handle:
         try:
