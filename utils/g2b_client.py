@@ -197,7 +197,7 @@ class G2BClient:
                 url = f"{self.BASE_URL}/{operation}"
                 log(f"📡 API 호출: {operation} (페이지 {page_no})")
 
-                response = self.session.get(url, params=params, timeout=30)
+                response = self.session.get(url, params=params, timeout=60)
 
                 # HTTP 상태 검증
                 try:
